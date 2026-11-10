@@ -7,6 +7,8 @@ import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import re
+import unicodedata
 from pathlib import Path
 import secrets
 import shutil
@@ -30,16 +32,35 @@ class Manager:
         self.mutex = threading.RLock()
         with self.db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS person_names (person INTEGER PRIMARY KEY, name TEXT NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS person_folders (person INTEGER PRIMARY KEY, folder TEXT NOT NULL UNIQUE)')
         self.history = self.root/'.management-history'
         self.history.mkdir(exist_ok=True)
 
     def db(self):
         return sqlite3.connect(self.database)
 
-    def digest(self):
+    def folder(self, pid):
+        with self.db() as db:
+            exists=db.execute("SELECT 1 FROM sqlite_master WHERE name='person_folders'").fetchone()
+            row=db.execute('SELECT folder FROM person_folders WHERE person=?',(pid,)).fetchone() if exists else None
+        return row[0] if row else f'Pessoa_{pid:04d}'
+
+    @staticmethod
+    def named_folder(pid, name):
+        label=unicodedata.normalize('NFC',name)
+        label=re.sub(r'[\\/:*?"<>|\x00-\x1f]', ' ',label)
+        label=' '.join(label.split()).strip(' .')
+        while len(label.encode('utf-8'))>180:
+            label=label[:-1]
+        return f'{label} - Pessoa_{pid:04d}' if label else f'Pessoa_{pid:04d}'
+
+    def digest(self, include_folders=True):
         with self.db() as db:
             rows = {table: sorted(db.execute('SELECT * FROM '+table).fetchall(), key=repr)
                     for table in ('config','people','photos','appearances','person_names')}
+            if include_folders:
+                exists=db.execute("SELECT 1 FROM sqlite_master WHERE name='person_folders'").fetchone()
+                rows['person_folders']=sorted(db.execute('SELECT * FROM person_folders').fetchall(),key=repr) if exists else []
         return hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()
 
     def safe(self, relative):
@@ -50,7 +71,7 @@ class Manager:
 
     def groups(self):
         with self.db() as db:
-            result = [{'id':pid,'name':name or '', 'count':count,'review':bool(review)} for pid,name,count,review in db.execute('SELECT p.id,n.name,COUNT(a.path),p.review FROM people p LEFT JOIN person_names n ON n.person=p.id LEFT JOIN appearances a ON a.person=p.id GROUP BY p.id ORDER BY p.id')]
+            result = [{'id':pid,'name':name or '', 'count':count,'review':bool(review),'folder':self.folder(pid)} for pid,name,count,review in db.execute('SELECT p.id,n.name,COUNT(a.path),p.review FROM people p LEFT JOIN person_names n ON n.person=p.id LEFT JOIN appearances a ON a.person=p.id GROUP BY p.id ORDER BY p.id')]
         return {'groups':result,'can_undo':self.latest() is not None}
 
     def latest(self):
@@ -67,7 +88,7 @@ class Manager:
         folder.mkdir()
         with self.db() as source, sqlite3.connect(folder/'before.sqlite3') as backup:
             source.backup(backup)
-        action.update(committed=False,undone=False)
+        action.update(committed=False,undone=False,version=2)
         (folder/'action.json').write_text(json.dumps(action))
         return folder
 
@@ -89,10 +110,27 @@ class Manager:
             with self.db() as db:
                 if not db.execute('SELECT 1 FROM people WHERE id=?',(pid,)).fetchone():
                     raise ValueError('Group not found.')
-            action={'kind':'rename','person':pid}
+            old=self.folder(pid)
+            new=self.named_folder(pid,name)
+            if old!=new and self.safe(new).exists():
+                raise ValueError('The requested directory already exists; nothing was overwritten.')
+            action={'kind':'rename','person':pid,'old_folder':old,'new_folder':new}
             folder=self.snapshot(action)
-            with self.db() as db:
-                db.execute('INSERT OR REPLACE INTO person_names VALUES (?,?)',(pid,name))
+            moved=False
+            try:
+                if old!=new:
+                    self.safe(old).rename(self.safe(new));moved=True
+                with self.db() as db:
+                    db.execute('CREATE TABLE IF NOT EXISTS person_folders (person INTEGER PRIMARY KEY, folder TEXT NOT NULL UNIQUE)')
+                    rows=db.execute('SELECT path,copy FROM appearances WHERE person=?',(pid,)).fetchall()
+                    for path,copy in rows:
+                        relative=Path(copy).relative_to(old)
+                        db.execute('UPDATE appearances SET copy=? WHERE person=? AND path=?',(str(Path(new)/relative),pid,path))
+                    db.execute('INSERT OR REPLACE INTO person_names VALUES (?,?)',(pid,name))
+                    db.execute('INSERT OR REPLACE INTO person_folders VALUES (?,?)',(pid,new))
+            except Exception:
+                if moved:self.safe(new).rename(self.safe(old))
+                raise
             self.finish(folder,action)
 
     def merge(self, ids, target, name):
@@ -109,6 +147,10 @@ class Manager:
                 appearances=[]
                 for pid in ids:
                     appearances.extend(db.execute('SELECT path,copy FROM appearances WHERE person=?',(pid,)))
+            originals={str(pid):self.folder(pid) for pid in ids}
+            output=self.named_folder(target,name)
+            if output not in originals.values() and self.safe(output).exists():
+                raise ValueError('The merged directory already exists; nothing was overwritten.')
             # Prepare a complete replacement first; original group trees stay intact until ready.
             stage=self.root/('.merge-staging-'+uuid.uuid4().hex)
             stage.mkdir()
@@ -122,32 +164,34 @@ class Manager:
                     if not dest.resolve().is_relative_to(stage.resolve()):raise ValueError('Invalid photo path.')
                     dest.parent.mkdir(parents=True,exist_ok=True)
                     shutil.copy2(source,dest)
-                    unique[path]=str(Path(f'Pessoa_{target:04d}')/rel)
+                    unique[path]=str(Path(output)/rel)
                 best=max(people,key=lambda p:p[3])
-                shutil.copy2(self.root/f'Pessoa_{best[0]:04d}'/'PRINCIPAL.jpg',stage/'PRINCIPAL.jpg')
+                shutil.copy2(self.safe(originals[str(best[0])])/'PRINCIPAL.jpg',stage/'PRINCIPAL.jpg')
                 vectors=[json.loads(p[1]) for p in people]
                 total=sum(p[2] for p in people)
                 vector=[sum(v[j]*p[2] for v,p in zip(vectors,people))/max(total,1) for j in range(len(vectors[0]))]
-                action={'kind':'merge','ids':ids,'target':target}
+                action={'kind':'merge','ids':ids,'target':target,'original_folders':originals,'merged_folder':output}
                 folder=self.snapshot(action)
                 archived=folder/'groups';archived.mkdir()
                 moved=[]
                 try:
                     for pid in ids:
-                        src=self.root/f'Pessoa_{pid:04d}'
+                        src=self.safe(originals[str(pid)])
                         src.rename(archived/src.name);moved.append(src.name)
-                    stage.rename(self.root/f'Pessoa_{target:04d}')
+                    stage.rename(self.safe(output))
                     with self.db() as db:
                         for pid in ids:
                             db.execute('DELETE FROM appearances WHERE person=?',(pid,))
                             db.execute('DELETE FROM people WHERE id=?',(pid,))
                             db.execute('DELETE FROM person_names WHERE person=?',(pid,))
+                            db.execute('DELETE FROM person_folders WHERE person=?',(pid,))
                         db.execute('INSERT INTO people VALUES (?,?,?,?,?,?)',(target,json.dumps(vector),total,best[3],best[4],0))
                         db.execute('INSERT INTO person_names VALUES (?,?)',(target,name))
+                        db.execute('INSERT INTO person_folders VALUES (?,?)',(target,output))
                         db.executemany('INSERT INTO appearances VALUES (?,?,?)',[(target,p,c) for p,c in unique.items()])
                 except Exception:
-                    replacement=self.root/f'Pessoa_{target:04d}'
-                    if replacement.exists() and (archived/replacement.name).exists():
+                    replacement=self.safe(output)
+                    if replacement.exists() and not stage.exists():
                         shutil.rmtree(replacement)
                     for part in moved:
                         (archived/part).rename(self.root/part)
@@ -161,22 +205,28 @@ class Manager:
             latest=self.latest()
             if not latest:raise ValueError('There is no action to undo.')
             folder,action=latest
-            if self.digest()!=action['after']:
+            if self.digest(include_folders=action.get('version',1)>=2)!=action['after']:
                 raise ValueError('Grouping data changed outside this manager; automatic undo is unavailable. Backups are preserved.')
             if action['kind']=='merge':
-                current=self.root/f'Pessoa_{action["target"]:04d}'
+                current=self.safe(action.get('merged_folder',f'Pessoa_{action["target"]:04d}'))
                 current.rename(folder/'merged-result')
                 for pid in action['ids']:
-                    src=folder/'groups'/f'Pessoa_{pid:04d}'
+                    src=folder/'groups'/action.get('original_folders',{}).get(str(pid),f'Pessoa_{pid:04d}')
                     src.rename(self.root/src.name)
+            elif action['kind']=='rename' and action.get('old_folder')!=action.get('new_folder'):
+                old=self.safe(action['old_folder']);new=self.safe(action['new_folder'])
+                if old.exists():raise ValueError('The previous directory name is already in use; undo stopped.')
+                new.rename(old)
             with sqlite3.connect(folder/'before.sqlite3') as source,self.db() as target:
                 source.backup(target)
+            with self.db() as db:
+                db.execute('CREATE TABLE IF NOT EXISTS person_folders (person INTEGER PRIMARY KEY, folder TEXT NOT NULL UNIQUE)')
             action['undone']=True
             (folder/'action.json').write_text(json.dumps(action))
             self.refresh_gallery()
 
     def photo(self,pid,index=None):
-        if index is None:return self.safe(f'Pessoa_{pid:04d}/PRINCIPAL.jpg')
+        if index is None:return self.safe(self.folder(pid))/'PRINCIPAL.jpg'
         with self.db() as db:
             row=db.execute('SELECT copy FROM appearances WHERE person=? ORDER BY path LIMIT 1 OFFSET ?',(pid,index)).fetchone()
         if not row:raise ValueError('Photo not found.')
@@ -187,7 +237,7 @@ PAGE = r'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="view
 <header><h1>Manage face groups</h1><p>Name people and merge groups that show the same person. Original source photos remain unchanged.</p><div class="toolbar"><input id="search" placeholder="Search names or group IDs" aria-label="Search groups"><button id="merge" class="primary">Merge selected groups</button><button id="clear">Clear selection</button><button id="undo">Undo last change</button><span id="selection"></span></div><p id="status" role="status"></p></header><main id="groups"></main>
 <dialog id="mergeDialog"><h2>Merge selected groups</h2><p>All unique photos will be collected under the retained group. A backup is saved so this can be undone.</p><label>Keep group <select id="target"></select></label><p><label>Person’s name <input id="mergedName" maxlength="100"></label></p><p id="mergeSummary"></p><button id="confirmMerge" class="primary">Merge groups</button> <button onclick="document.querySelector('#mergeDialog').close()">Cancel</button></dialog>
 <dialog id="photoDialog"><h2 id="photoTitle"></h2><button onclick="document.querySelector('#photoDialog').close()">Close</button><p></p><div class="photos" id="photoGrid"></div></dialog>
-<script>const TOKEN='__TOKEN__';let groups=[],selected=new Set(),busy=false,canUndo=false;const $=s=>document.querySelector(s);function status(s){$('#status').textContent=s}async function api(path,data){const r=await fetch(path,data?{method:'POST',headers:{'Content-Type':'application/json','X-Local-Token':TOKEN},body:JSON.stringify(data)}:{});const result=await r.json();if(!r.ok)throw Error(result.error||'Request failed');return result}function label(g){return g.name||`Person ${String(g.id).padStart(4,'0')}`}function setBusy(b){busy=b;document.querySelectorAll('button').forEach(x=>x.disabled=b);if(!b)$('#undo').disabled=!canUndo}async function load(){const r=await api('/api/groups');groups=r.groups;canUndo=r.can_undo;selected=new Set([...selected].filter(id=>groups.some(g=>g.id===id)));render();$('#undo').disabled=!r.can_undo}function render(){const q=$('#search').value.toLowerCase();$('#groups').replaceChildren();for(const g of groups){if(!`${label(g)} ${g.id}`.toLowerCase().includes(q))continue;const c=document.createElement('section');c.className='card'+(selected.has(g.id)?' selected':'');const img=document.createElement('img');img.className='face';img.src=`/image/${g.id}?v=${Date.now()}`;img.alt=`Reference face for ${label(g)}`;c.append(img);const l=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(g.id);check.onchange=()=>{check.checked?selected.add(g.id):selected.delete(g.id);render()};l.append(check,document.createTextNode(` Group ${g.id} · ${g.count} photos`));c.append(l);const input=document.createElement('input');input.className='name';input.placeholder='Enter person’s name';input.value=g.name;input.maxLength=100;input.setAttribute('aria-label',`Name for group ${g.id}`);c.append(input);const buttons=document.createElement('div');buttons.className='buttons';const save=document.createElement('button');save.textContent='Save name';save.onclick=()=>mutate('/api/name',{id:g.id,name:input.value},'Name saved.');const view=document.createElement('button');view.textContent='View photos';view.onclick=()=>showPhotos(g);buttons.append(save,view);c.append(buttons);if(g.review){const p=document.createElement('p');p.className='small';p.textContent='Review similarity';c.append(p)}$('#groups').append(c)}$('#selection').textContent=`${selected.size} groups selected`}async function mutate(path,data,message){if(busy)return;setBusy(true);status('Saving…');try{await api(path,data);await load();status(message)}catch(e){status(e.message)}finally{setBusy(false)}}function showPhotos(g){$('#photoTitle').textContent=label(g);$('#photoGrid').replaceChildren();for(let i=0;i<g.count;i++){const a=document.createElement('a');a.href=`/image/${g.id}/${i}`;a.target='_blank';a.rel='noopener';const img=document.createElement('img');img.loading='lazy';img.src=a.href;img.alt=`Photo ${i+1}`;a.append(img);$('#photoGrid').append(a)}$('#photoDialog').showModal()}$('#search').oninput=render;$('#clear').onclick=()=>{selected.clear();render()};$('#merge').onclick=()=>{if(selected.size<2){status('Select at least two groups showing the same person.');return}const chosen=groups.filter(g=>selected.has(g.id));$('#target').replaceChildren();for(const g of chosen){const o=document.createElement('option');o.value=g.id;o.textContent=`${label(g)} (group ${g.id})`;$('#target').append(o)}$('#mergedName').value=chosen[0].name;$('#mergeSummary').textContent=`${chosen.length} groups selected. Duplicate photos will appear once in the merged group.`;$('#mergeDialog').showModal()};$('#target').onchange=()=>{$('#mergedName').value=groups.find(g=>g.id===Number($('#target').value)).name};$('#confirmMerge').onclick=async()=>{$('#mergeDialog').close();await mutate('/api/merge',{ids:[...selected],target:Number($('#target').value),name:$('#mergedName').value},'Groups merged. You can undo this change.');selected.clear();render()};$('#undo').onclick=()=>mutate('/api/undo',{},'Last change undone.');load().catch(e=>status(e.message));</script></html>'''
+<script>const TOKEN='__TOKEN__';let groups=[],selected=new Set(),busy=false,canUndo=false;const $=s=>document.querySelector(s);function status(s){$('#status').textContent=s}async function api(path,data){const r=await fetch(path,data?{method:'POST',headers:{'Content-Type':'application/json','X-Local-Token':TOKEN},body:JSON.stringify(data)}:{});const result=await r.json();if(!r.ok)throw Error(result.error||'Request failed');return result}function label(g){return g.name||`Person ${String(g.id).padStart(4,'0')}`}function setBusy(b){busy=b;document.querySelectorAll('button').forEach(x=>x.disabled=b);if(!b)$('#undo').disabled=!canUndo}async function load(){const r=await api('/api/groups');groups=r.groups;canUndo=r.can_undo;selected=new Set([...selected].filter(id=>groups.some(g=>g.id===id)));render();$('#undo').disabled=!r.can_undo}function render(){const q=$('#search').value.toLowerCase();$('#groups').replaceChildren();for(const g of groups){if(!`${label(g)} ${g.id}`.toLowerCase().includes(q))continue;const c=document.createElement('section');c.className='card'+(selected.has(g.id)?' selected':'');const img=document.createElement('img');img.className='face';img.src=`/image/${g.id}?v=${Date.now()}`;img.alt=`Reference face for ${label(g)}`;c.append(img);const l=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(g.id);check.onchange=()=>{check.checked?selected.add(g.id):selected.delete(g.id);render()};l.append(check,document.createTextNode(` Group ${g.id} · ${g.count} photos`));c.append(l);const pathLabel=document.createElement('p');pathLabel.className='small';pathLabel.textContent=g.folder;c.append(pathLabel);const input=document.createElement('input');input.className='name';input.placeholder='Enter person’s name';input.value=g.name;input.maxLength=100;input.setAttribute('aria-label',`Name for group ${g.id}`);c.append(input);const buttons=document.createElement('div');buttons.className='buttons';const save=document.createElement('button');save.textContent='Save name';save.onclick=()=>mutate('/api/name',{id:g.id,name:input.value},'Name saved and directory renamed.');const view=document.createElement('button');view.textContent='View photos';view.onclick=()=>showPhotos(g);buttons.append(save,view);c.append(buttons);if(g.review){const p=document.createElement('p');p.className='small';p.textContent='Review similarity';c.append(p)}$('#groups').append(c)}$('#selection').textContent=`${selected.size} groups selected`}async function mutate(path,data,message){if(busy)return;setBusy(true);status('Saving…');try{await api(path,data);await load();status(message)}catch(e){status(e.message)}finally{setBusy(false)}}function showPhotos(g){$('#photoTitle').textContent=label(g);$('#photoGrid').replaceChildren();for(let i=0;i<g.count;i++){const a=document.createElement('a');a.href=`/image/${g.id}/${i}`;a.target='_blank';a.rel='noopener';const img=document.createElement('img');img.loading='lazy';img.src=a.href;img.alt=`Photo ${i+1}`;a.append(img);$('#photoGrid').append(a)}$('#photoDialog').showModal()}$('#search').oninput=render;$('#clear').onclick=()=>{selected.clear();render()};$('#merge').onclick=()=>{if(selected.size<2){status('Select at least two groups showing the same person.');return}const chosen=groups.filter(g=>selected.has(g.id));$('#target').replaceChildren();for(const g of chosen){const o=document.createElement('option');o.value=g.id;o.textContent=`${label(g)} (group ${g.id})`;$('#target').append(o)}$('#mergedName').value=chosen[0].name;$('#mergeSummary').textContent=`${chosen.length} groups selected. Duplicate photos will appear once in the merged group.`;$('#mergeDialog').showModal()};$('#target').onchange=()=>{$('#mergedName').value=groups.find(g=>g.id===Number($('#target').value)).name};$('#confirmMerge').onclick=async()=>{$('#mergeDialog').close();await mutate('/api/merge',{ids:[...selected],target:Number($('#target').value),name:$('#mergedName').value},'Groups merged. You can undo this change.');selected.clear();render()};$('#undo').onclick=()=>mutate('/api/undo',{},'Last change undone.');load().catch(e=>status(e.message));</script></html>'''
 
 
 def serve(manager,port=0):
@@ -232,6 +282,7 @@ def serve(manager,port=0):
             except (KeyError,TypeError):return self.send(400,{'error':'Invalid request. Check the selected groups and try again.'})
             except Exception:return self.send(500,{'error':'Could not save this change. Backups were preserved; check available disk space.'})
     server=ThreadingHTTPServer(('127.0.0.1',port),Handler)
+    server.daemon_threads=False  # Finish active edits before shutting down.
     return server
 
 

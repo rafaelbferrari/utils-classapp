@@ -31,11 +31,46 @@ class ManagerTests(unittest.TestCase):
         groups=self.manager.groups()['groups'];self.assertEqual(len(groups),1)
         self.assertEqual(groups[0]['count'],3);self.assertEqual(groups[0]['name'],'Example Person')
         self.assertFalse((self.root/'Pessoa_0002').exists())
-        self.assertEqual(len(list((self.root/'Pessoa_0001'/'fotos').iterdir())),3)
+        self.assertEqual(len(list((self.root/self.manager.folder(1)/'fotos').iterdir())),3)
         self.assertIn('Example Person',(self.root/'PESSOAS.html').read_text())
         self.manager.undo();self.assertEqual(len(self.manager.groups()['groups']),2)
         self.assertTrue((self.root/'Pessoa_0002'/'fotos'/'unique2.jpg').exists())
         self.manager.undo();self.assertTrue(all(not g['name'] for g in self.manager.groups()['groups']))
+    def test_folder_rename_paths_and_duplicate_names(self):
+        self.manager.rename(1,'Example Person')
+        self.manager.rename(2,'Example Person')
+        a=self.manager.folder(1);b=self.manager.folder(2)
+        self.assertNotEqual(a,b)
+        self.assertEqual(a,'Example Person - Pessoa_0001')
+        self.assertTrue((self.root/a/'PRINCIPAL.jpg').is_file())
+        self.assertTrue(self.manager.photo(1,0).is_file())
+        with self.manager.db() as db:
+            from separar_pessoas import group_folder
+            self.assertEqual(group_folder(db,1),a)
+        self.manager.rename(1,'')
+        self.assertEqual(self.manager.folder(1),'Pessoa_0001')
+        self.assertTrue(self.manager.photo(1,0).is_file())
+        self.manager.undo()
+        self.assertTrue((self.root/a).is_dir())
+
+    def test_folder_names_are_safe(self):
+        self.manager.rename(1,'../Example / Person:*?')
+        name=self.manager.folder(1)
+        self.assertNotIn('/',name)
+        self.assertFalse(name.startswith('.'))
+        self.assertTrue((self.root/name).is_dir())
+
+    def test_legacy_undo_then_rename(self):
+        with self.manager.db() as db:db.execute('DROP TABLE person_folders')
+        folder=self.manager.history/'legacy';folder.mkdir()
+        with self.manager.db() as source,sqlite3.connect(folder/'before.sqlite3') as backup:source.backup(backup)
+        with self.manager.db() as db:db.execute('INSERT INTO person_names VALUES (?,?)',(1,'Legacy name'))
+        action={'kind':'rename','person':1,'committed':True,'undone':False,'after':self.manager.digest(include_folders=False)}
+        (folder/'action.json').write_text(json.dumps(action))
+        self.manager.undo()
+        self.manager.rename(1,'New name')
+        self.assertTrue((self.root/'New name - Pessoa_0001').is_dir())
+
     def test_invalid_merge_does_not_change_data(self):
         before=self.manager.digest()
         with self.assertRaises(ValueError):self.manager.merge([1,99],1,'Example')

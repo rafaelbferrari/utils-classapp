@@ -171,3 +171,5 @@ Os comentários, mensagens do Terminal e a galeria gerada usam inglês. Os nomes
 ## Nomear e unificar grupos de rostos
 
 Abra **Manage face groups.command** e selecione a pasta de resultado que contém `PESSOAS.html`. Use **Save name** para salvar o nome; selecione dois ou mais grupos e use **Merge selected groups** para unificar as fotos. **Undo last change** desfaz a última alteração. Tudo permanece local, com backup dos grupos e sem alterar as fotos de origem. A interface precisa permanecer em execução durante o uso.
+
+Ao salvar um nome no gerenciador, a pasta passa a usar esse nome mais o número do grupo (exemplo fictício: `Pessoa Exemplo - Pessoa_0001`). Os caminhos e a galeria são atualizados juntos; desfazer também restaura o nome anterior da pasta. Para nomes salvos em versões antigas, clique novamente em **Save name**.
