@@ -1,0 +1,48 @@
+# Sessões, credenciais e capturas de rede
+.private/
+.env
+.env.*
+*.curl
+*.har
+*.rtf
+*.pem
+*.key
+
+# Fotos, vídeos, backups e modelos (somente código no repositório)
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.heic
+*.heif
+*.tif
+*.tiff
+*.gif
+*.mp4
+*.mov
+*_original
+*.onnx
+fotos/
+fotos_v2/
+fotos_v3/
+fotos_v4/
+*_por_pessoa/
+.modelos-pessoas/
+
+# Dados e relatórios locais
+*.json
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.log
+*.tmp
+*.part
+*.download
+
+# Ambientes e arquivos do sistema
+.venv*/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
