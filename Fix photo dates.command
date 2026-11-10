@@ -1,7 +1,7 @@
 #!/bin/zsh
 cd -- "${0:A:h}" || exit 1
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-python3 ajustar_datas_pastas.py . "$@"
+python3 ajustar_datas_pastas.py "$@"
 resultado=$?
 print '\nPress Enter to close.'
 read resposta

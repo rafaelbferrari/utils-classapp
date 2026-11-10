@@ -14,7 +14,7 @@ Downloads use direct HTTP requests. Face grouping runs locally. No cloud AI serv
 | --- | --- | --- |
 | Download photos | **[Download photos turbo.command](Download%20photos%20turbo.command)** | Latest downloader: up to 32 concurrent images, 12 by default, date filters, resume, and automatic recovery. |
 | Find the start of your history | [Find oldest date.command](Find%20oldest%20date.command) | Finds the oldest accessible publication and oldest publication with photos without downloading images. |
-| Correct dates in an existing collection | [Fix photo dates.command](Fix%20photo%20dates.command) | Uses `YYYY-MM-DD` directories to update EXIF/XMP and Finder dates, without contacting ClassApp. |
+| Correct dates in an existing collection | [Fix photo dates.command](Fix%20photo%20dates.command) | Uses `fotos/YYYY-MM-DD` to update dates and move photos into fotos_v2 without copying. |
 | Group photos by person | [Group photos by person.command](Group%20photos%20by%20person.command) | Copies photos into face-similarity groups and creates a representative face crop and a gallery for review. |
 | Name and merge groups | [Manage face groups.command](Manage%20face%20groups.command) | Save names, inspect full photos, merge duplicate groups, and undo changes in a local browser interface. |
 | Install face grouping dependencies | [Install face recognition.command](Install%20face%20recognition.command) | Installs an isolated environment and downloads official public models. Does not process photos. |
@@ -81,7 +81,7 @@ Press Control+C to stop. Active requests may need time to finish. Running again 
 
 - **Find the oldest date:** run `python3 consultar_primeira_data.py`. It scans publication metadata and saves a local report, not images. [History guide](docs/history.md).
 - **Preserve useful photo dates:** v2–v4 retain an existing EXIF capture date or fall back to the publication date. The index records which source was used. [Download and metadata guide](docs/downloads.md).
-- **Fix dates from directory names:** run `python3 ajustar_datas_pastas.py /path/to/collection --dry-run`, then remove `--dry-run` to apply. This explicitly overwrites dates with the directory day at noon, creating `_original` backups by default. [Date correction guide](docs/dates.md).
+- **Fix dates from directory names:** run `python3 ajustar_datas_pastas.py --dry-run`, then remove `--dry-run` to update dates and move photos from `fotos` into `fotos_v2` without copies or image backups. Dates are overwritten with the directory day at noon; stop downloaders first. Use `--in-place` for the legacy date-only operation. [Date correction guide](docs/dates.md).
 - **Group similar faces:** install dependencies, then launch **Group photos by person.command** after downloads finish. A separate output directory contains `Pessoa_0001`, a `PRINCIPAL.jpg` reference crop for each group, and a local `PESSOAS.html` gallery. Originals are preserved. [Face grouping guide](docs/faces.md).
 
 Face groups are approximate, not confirmed identities. Similar-looking people, small or blurry faces, and side views may cause mixed or duplicate groups. Review the gallery before naming people. The private local database contains face descriptors; do not publish it. Group photos may be copied into multiple directories, requiring additional disk space.

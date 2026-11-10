@@ -97,14 +97,14 @@ Percorre as páginas e calcula a data mais antiga disponível e a primeira com f
 
 A v2/v3/v4 preserva a captura EXIF quando presente. Se ela não existir, usa a publicação como aproximação e registra a origem da data no índice. Isso ajuda a organizar os arquivos no Finder e em aplicativos de fotos, mas não comprova o dia em que a escola tirou a foto.
 
-Para uma coleção já organizada em pastas de data, copie `ajustar_datas_pastas.py` e seu lançador para a pasta da coleção ou informe o caminho pelo Terminal:
+O ajustador agora lê as datas de `fotos/AAAA-MM-DD`, corrige os metadados e move as fotos para `fotos_v2`, sem duplicar arquivos nem criar backups de imagens. Pare os downloaders antes de usar.
 
 ```sh
-python3 ajustar_datas_pastas.py /caminho/da/colecao --simular
-python3 ajustar_datas_pastas.py /caminho/da/colecao
+python3 ajustar_datas_pastas.py --dry-run
+python3 ajustar_datas_pastas.py
 ```
 
-Esse ajustador **sobrescreve** as datas com o dia da pasta às **12h de São Paulo**, pois a pasta não informa o horário. Cria backups `_original` por padrão e não recomprime as imagens. Rode após os downloads. [Guia do ajustador](LEIA-ME-ajustar-datas.md).
+A hora usada é **12h de São Paulo**, pois a pasta só informa o dia. Os índices são atualizados. Arquivos idênticos já existentes no destino ficam em uma única cópia; arquivos diferentes com o mesmo caminho são preservados para revisão. Para somente corrigir as datas sem mover, use `--in-place /caminho/da/colecao` (esse modo antigo cria backups por padrão). [Guia do ajustador em inglês](docs/dates.md).
 
 ### Encontrar fotos de cada pessoa
 
