@@ -17,6 +17,27 @@ import numpy as np
 from PIL import Image
 
 class GroupTests(unittest.TestCase):
+    def test_finder_paths_and_invisible_trailing_space(self):
+        import shlex
+        with tempfile.TemporaryDirectory() as td:
+            source=Path(td)/'Sample photos';source.mkdir()
+            self.assertEqual(app.normalize_directory(str(source)+'\u00a0'),source.resolve())
+            self.assertEqual(app.normalize_directory(str(source)+' \u200b '),source.resolve())
+            self.assertEqual(app.normalize_directory(str(source).replace(' ',r'\ ')),source.resolve())
+            self.assertEqual(app.normalize_directory(shlex.quote(str(source))),source.resolve())
+            actual=Path(td)/'Actual trailing space ';actual.mkdir()
+            self.assertEqual(app.normalize_directory(str(actual)),actual.resolve())
+
+    def test_missing_source_has_specific_message(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing=str(Path(td)/'missing')
+            stderr=io.StringIO()
+            with patch.object(sys,'argv',['group',missing]),patch.object(app,'check_models') as models,contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:app.main()
+            self.assertEqual(exc.exception.code,2)
+            self.assertIn('Source directory not found',stderr.getvalue())
+            models.assert_not_called()
+
     def test_similarity_margin_and_same_photo(self):
         a=np.array([1.,0.,0.],dtype=np.float32)
         people={1:{'vector':a},2:{'vector':np.array([0.,1.,0.],dtype=np.float32)}}

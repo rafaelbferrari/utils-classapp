@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import sqlite3
 import sys
 import urllib.request
@@ -137,6 +138,26 @@ def gallery(db, destination):
     tmp = destination/'PESSOAS.tmp.html'; tmp.write_text(document, encoding='utf-8'); tmp.replace(destination/'PESSOAS.html')
 
 
+def normalize_directory(value):
+    """Accept Finder paths and pasted whitespace without altering existing paths."""
+    original = Path(value).expanduser()
+    if original.exists():
+        return original.resolve()
+    cleaned = value.strip().strip('\ufeff\u200b').strip()
+    candidate = Path(cleaned).expanduser()
+    if candidate.exists():
+        return candidate.resolve()
+    try:
+        parts = shlex.split(cleaned)
+    except ValueError:
+        parts = []
+    if len(parts) == 1:
+        unquoted = Path(parts[0]).expanduser()
+        if unquoted.exists():
+            return unquoted.resolve()
+    return candidate.resolve()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('origem', metavar='SOURCE', nargs='?', help='Source photo directory. Originals are never modified.')
@@ -158,9 +179,11 @@ def main():
         parser.error('Specify the source directory explicitly.')
     if not 0 < args.limiar < 1 or not 0 <= args.margem < 1 or args.tamanho < 320 or (args.max_fotos is not None and args.max_fotos < 1):
         parser.error('Invalid analysis parameters.')
-    source = Path(args.origem).expanduser().resolve()
-    destination = Path(args.destino).expanduser().resolve() if args.destino else source.with_name(source.name+'_por_pessoa')
-    if not source.is_dir() or source == destination or source in destination.parents or destination in source.parents:
+    source = normalize_directory(args.origem)
+    if not source.is_dir():
+        parser.error('Source directory not found. Drag an existing photo directory into the Terminal or check the pasted path.')
+    destination = normalize_directory(args.destino) if args.destino else source.with_name(source.name+'_por_pessoa')
+    if source == destination or source in destination.parents or destination in source.parents:
         parser.error('Source and destination must be separate directories, neither inside the other.')
     check_models(models)
     # Import libraries only for processing; help and installation do not read images.

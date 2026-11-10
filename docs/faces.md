@@ -49,3 +49,5 @@ The manager serves only on `127.0.0.1` and keeps names, images, and backups on t
 Before each change, a database snapshot is saved under `.management-history`. Merges archive the original group directories there. Undo is allowed only while the database still matches the latest managed action, preventing it from overwriting a newer analysis. Backups can require additional disk space. Do not delete them if you need undo. Keep these private along with the result database.
 
 Names saved in an older manager version are retained. Select **Save name** again to apply the directory rename to an existing label.
+
+Finder-dropped or pasted directory paths accept surrounding whitespace (including non-breaking spaces) and shell quoting. Existing paths with intentional trailing spaces are preserved. A missing source directory is reported separately from source/destination overlap.
