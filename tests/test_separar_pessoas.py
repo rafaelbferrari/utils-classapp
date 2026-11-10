@@ -59,7 +59,7 @@ class GroupTests(unittest.TestCase):
             root=Path(td);source=root/'artificiais';source.mkdir();dest=root/'resultado'
             for i,w in enumerate([80,81,82]):Image.new('RGB',(w,80),(100,70,20)).save(source/f'{i}.png')
             before={p.name:p.read_bytes() for p in source.iterdir()}
-            argv=['separar_pessoas.py',str(source),'--destino',str(dest)]
+            argv=['separar_pessoas.py',str(source),'--engine','sface','--destino',str(dest)]
             with patch.object(cv2,'FaceDetectorYN',SimpleNamespace(create=lambda *a:Detector())),patch.object(cv2,'FaceRecognizerSF',SimpleNamespace(create=lambda *a:Recognizer())),patch.object(sys,'argv',argv),contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(app.main(),0)
                 self.assertEqual(app.main(),0)
@@ -77,7 +77,7 @@ class GroupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td);source=root/'artificiais';source.mkdir();dest=root/'saida'
             Image.new('RGB',(160,160),'gray').save(source/'sem_rosto.jpg')
-            with patch.object(sys,'argv',['separar_pessoas.py',str(source),'--destino',str(dest)]),contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(sys,'argv',['separar_pessoas.py',str(source),'--engine','sface','--destino',str(dest)]),contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(app.main(),0)
             self.assertEqual((source/'sem_rosto.jpg').read_bytes(),(dest/'Sem_rosto_detectado'/'sem_rosto.jpg').read_bytes())
 

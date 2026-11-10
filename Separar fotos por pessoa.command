@@ -6,7 +6,8 @@ if [[ ! -x .venv-pessoas/bin/python ]]; then
   exit 1
 fi
 print 'Source directory: drag the photo directory into this window and press Enter.'
-print 'Run after downloads have finished.'
+print 'Run after downloads have finished. AdaFace creates a separate SOURCE_por_pessoa_v2 output.'
+print 'Run Install face recognition.command again if upgrading from SFace.'
 IFS= read -r origem
 # Finder escapes spaces when dragging; (Q) removes quoting without executing commands.
 origem=${(Q)origem}

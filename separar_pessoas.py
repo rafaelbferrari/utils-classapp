@@ -161,18 +161,31 @@ def normalize_directory(value):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('origem', metavar='SOURCE', nargs='?', help='Source photo directory. Originals are never modified.')
-    parser.add_argument('--destination', '--destino', metavar='DIRECTORY', dest='destino', help='Separate output directory; default: SOURCE_NAME_por_pessoa next to the source.')
+    parser.add_argument('--destination', '--destino', metavar='DIRECTORY', dest='destino', help='Separate output directory; default: SOURCE_NAME_por_pessoa_v2 next to the source (AdaFace).')
     parser.add_argument('--models', '--modelos', metavar='DIRECTORY', dest='modelos', default=str(Path(__file__).resolve().parent/'.modelos-pessoas'))
     parser.add_argument('--prepare-models', '--preparar-modelos', dest='preparar_modelos', action='store_true', help='Install models only; do not read photos.')
-    parser.add_argument('--threshold', '--limiar', metavar='SCORE', dest='limiar', type=float, default=0.48, help='Minimum similarity (0 to 1); higher values create more separate groups. Default 0.48.')
+    parser.add_argument('--threshold', '--limiar', metavar='SCORE', dest='limiar', type=float, default=None, help='Minimum similarity; default 0.42 for AdaFace, 0.48 for legacy SFace.')
     parser.add_argument('--margin', '--margem', metavar='SCORE', dest='margem', type=float, default=0.05, help='Minimum score difference between the two best groups.')
     parser.add_argument('--size', '--tamanho', metavar='PIXELS', dest='tamanho', type=int, default=1600, help='Maximum image side for analysis; originals are not resized.')
     parser.add_argument('--max-photos', '--max-fotos', metavar='COUNT', dest='max_fotos', type=int, help='Limit newly analyzed photos for testing.')
+    parser.add_argument('--engine', choices=['adaface','sface'], default='adaface', help='AdaFace global grouping (default) or legacy SFace.')
+    parser.add_argument('--reference-floor', type=float, default=0.25, help='Minimum similarity across group reference faces.')
+    parser.add_argument('--min-face', type=int, default=48, help='Minimum detected face side in analysis pixels.')
+    parser.add_argument('--min-sharpness', type=float, default=20, help='Minimum aligned-face Laplacian variance.')
+    parser.add_argument('--min-photos', type=int, default=2, help='Distinct photos needed for an unnamed person folder.')
+    parser.add_argument('--labels-from', action='append', metavar='DIRECTORY', help='Import named reference portraits from an earlier output; repeatable.')
+    parser.add_argument('--regroup', action='store_true', help='Rebuild groups from cached features, archiving the previous export.')
     args = parser.parse_args()
+    if args.limiar is None: args.limiar = 0.42 if args.engine == 'adaface' else 0.48
+    if not 0 <= args.reference_floor <= args.limiar or args.min_face < 16 or args.min_sharpness < 0 or args.min_photos < 1:
+        parser.error('Invalid global grouping parameters.')
     os.umask(0o077)
     models = Path(args.modelos).resolve()
     if args.preparar_modelos:
         prepare_models(models)
+        if args.engine == 'adaface':
+            from face_engine import prepare_model
+            prepare_model(models)
         print('Models installed. No photo directories were read.')
         return
     if not args.origem:
@@ -182,10 +195,13 @@ def main():
     source = normalize_directory(args.origem)
     if not source.is_dir():
         parser.error('Source directory not found. Drag an existing photo directory into the Terminal or check the pasted path.')
-    destination = normalize_directory(args.destino) if args.destino else source.with_name(source.name+'_por_pessoa')
+    destination = normalize_directory(args.destino) if args.destino else source.with_name(source.name+('_por_pessoa_v2' if args.engine == 'adaface' else '_por_pessoa'))
     if source == destination or source in destination.parents or destination in source.parents:
         parser.error('Source and destination must be separate directories, neither inside the other.')
     check_models(models)
+    if args.engine == 'adaface':
+        import face_engine
+        return face_engine.run(args, source, destination, sys.modules[__name__])
     # Import libraries only for processing; help and installation do not read images.
     import cv2
     import numpy as np

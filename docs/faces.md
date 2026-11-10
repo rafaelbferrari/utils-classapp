@@ -11,27 +11,36 @@
 .venv-pessoas/bin/python separar_pessoas.py /path/to/photos --max-photos 30
 ```
 
-The result contains numbered `Pessoa_0001` directories. Each has a `PRINCIPAL.jpg` representative face crop, a `PRINCIPAL-origem.txt` source reference, and a `fotos` directory containing full-photo copies. Larger, sharper face appearances can replace the reference crop as processing continues. Only reference crops are converted; full photos are copied unchanged with modification dates preserved. Group photos are copied into multiple matching directories and may require substantial extra disk space.
+The default engine uses YuNet detection, AdaFace IR-50 descriptors and global FAISS candidate search. It compares multiple diverse references per group and forbids merging faces appearing together in the same photo. This replaces the legacy one-photo-at-a-time SFace centroid algorithm. All processing stays local after model installation.
 
-The local YuNet/SFace models run offline after installation. No photos or descriptors are uploaded to a service. A hidden `.pessoas.sqlite3` database stores associations and face descriptors for resume; keep it private and do not delete it when resuming. Tiny or undetected faces are excluded, and images with no usable faces go to `Sem_rosto_detectado`.
+Output defaults to `SOURCE_NAME_por_pessoa_v2`, separate from legacy `SOURCE_NAME_por_pessoa`. Each confirmed-by-similarity group has a `PRINCIPAL.jpg` crop, source reference and full-photo copies under `fotos`. On supported macOS APFS volumes, independent copy-on-write clones avoid initially duplicating photo data; other filesystems use copies. Editing an output does not edit the original.
 
-## Review the groups
+Unnamed clusters need at least two distinct photos before receiving a person directory. Isolated faces and small or blurred detections appear in `REVIEW.html` and `Needs_review`; they are not discarded merely to reduce the group count. Images without a detected face remain in the source. `analysis_summary.json` reports groups, unconfirmed faces and filtered detections. A lower folder count alone does not establish improved identity accuracy.
 
-Groups indicate similarity, not verified identities. Similar-looking people, twins, side views, and blurry faces may cause mixed or split groups. Review all groups, including those without a review marker. Ambiguous matches create groups marked “review similarity” in the gallery. The incremental algorithm depends on image order and does not automatically merge existing groups.
-
-The same group is not assigned two separate faces in one photo. The default similarity threshold is 0.48, with a 0.05 margin between candidates. A higher threshold tends to split more groups. To change settings, choose a fresh destination:
+## Settings and resume
 
 ```sh
-.venv-pessoas/bin/python separar_pessoas.py /path/to/photos --threshold 0.55 --destination /path/to/new_output
+.venv-pessoas/bin/python separar_pessoas.py /path/to/photos --max-photos 50
+.venv-pessoas/bin/python separar_pessoas.py /path/to/photos
 ```
 
-## Resume
+Control+C stops processing. Repeating the command reuses unchanged photos from `.face-cache.sqlite3`. The global grouping and gallery are exported after feature extraction finishes. Keep the hidden cache and crops. Extraction errors are retried on the next run, before export. Changed source files require a fresh destination. Stop downloads and date correction first.
 
-Press Control+C and rerun with the same source and destination. Registered unchanged photos are skipped. The gallery refreshes every 25 photos and at exit. A lock prevents concurrent use of the same output. If source files change after analysis or you delete output copies, choose a new destination to rebuild.
+The defaults are similarity threshold `0.42`, cross-reference floor `0.25`, minimum face side `48` pixels, sharpness variance `20`, and `--min-photos 2`. These are heuristic settings, not calibrated probabilities. Higher thresholds split more groups. `--min-photos 1` also creates folders for isolated detections. Growth over years, similar classmates, twins, pose and blur can still split or mix groups. No model guarantees correct identification across childhood.
 
-Do not rename group directories manually. Use the manager to keep photo paths, the gallery, and future resume operations synchronized. Existing unlabelled groups keep their numbered directory names.
+To change grouping settings without extracting features again:
 
-Models come from a fixed revision of the official OpenCV repository with SHA-256 verification. Dependencies are isolated in `.venv-pessoas`. Validated with Python 3.9 on macOS Apple Silicon. [OpenCV model documentation](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html).
+```sh
+.venv-pessoas/bin/python separar_pessoas.py /path/to/photos --regroup --threshold 0.45
+```
+
+Rebuilding archives the previous export under `.previous-exports`. Group numbers can change. Names from the current output and the neighboring legacy output are imported as reference portraits when one usable face is detected. Use `--labels-from /path/to/another_result` for additional named references. Distinct names cannot merge automatically. Names do not retrain the model; unnamed manual merges are not imported as constraints. Previous manual corrections remain in the archived export.
+
+Without new photos or `--regroup`, a completed output is preserved. Close its manager before analyzing it. Never rename group folders manually. New source photos trigger global regrouping and archive the old export.
+
+Legacy outputs and descriptors are incompatible with AdaFace. They remain untouched; re-analysis of originals is required. To explicitly continue the old algorithm, use `--engine sface` with its original settings and destination.
+
+Models use SHA-256 verification. AdaFace IR-50 is the practical local default for this Mac, not a claim to be the newest or largest available model. Sources: [AdaFace ONNX export](https://github.com/yakhyo/adaface-onnx), [AdaFace research implementation](https://github.com/mk-minchul/AdaFace), [FAISS](https://github.com/facebookresearch/faiss), and [OpenCV YuNet](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html). Dependencies are isolated in `.venv-pessoas`, validated with Python 3.9 on Apple Silicon. Re-run the installer when upgrading.
 
 ## Name and merge groups
 

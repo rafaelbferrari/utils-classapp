@@ -82,7 +82,7 @@ Press Control+C to stop. Active requests may need time to finish. Running again 
 - **Find the oldest date:** run `python3 consultar_primeira_data.py`. It scans publication metadata and saves a local report, not images. [History guide](docs/history.md).
 - **Preserve useful photo dates:** v2–v4 retain an existing EXIF capture date or fall back to the publication date. The index records which source was used. [Download and metadata guide](docs/downloads.md).
 - **Fix dates from directory names:** run `python3 ajustar_datas_pastas.py --dry-run`, then remove `--dry-run` to update dates and move photos from `fotos` into `fotos_v2` without copies or image backups. Dates are overwritten with the directory day at noon; stop downloaders first. Use `--in-place` for the legacy date-only operation. [Date correction guide](docs/dates.md).
-- **Group similar faces:** install dependencies, then launch **Group photos by person.command** after downloads finish. A separate output directory contains `Pessoa_0001`, a `PRINCIPAL.jpg` reference crop for each group, and a local `PESSOAS.html` gallery. Originals are preserved. [Face grouping guide](docs/faces.md).
+- **Group similar faces:** the default AdaFace engine compares faces globally and creates `SOURCE_por_pessoa_v2`; isolated and low-quality faces go to a review gallery. Re-run the dependency installer when upgrading. install dependencies, then launch **Group photos by person.command** after downloads finish. A separate output directory contains `Pessoa_0001`, a `PRINCIPAL.jpg` reference crop for each group, and a local `PESSOAS.html` gallery. Originals are preserved. [Face grouping guide](docs/faces.md).
 
 Face groups are approximate, not confirmed identities. Similar-looking people, small or blurry faces, and side views may cause mixed or duplicate groups. Review the gallery before naming people. The private local database contains face descriptors; do not publish it. Group photos may be copied into multiple directories, requiring additional disk space.
 
@@ -118,4 +118,4 @@ python3 -m venv .venv-pessoas
 .venv-pessoas/bin/python -m unittest discover -s tests -v
 ```
 
-One test runs the real models on an artificial blank image; grouping tests use simulated descriptors. These tests verify workflow and resume, not recognition accuracy on real children’s photos. Face models: official [OpenCV YuNet/SFace](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html).
+One test runs the real models on an artificial blank image; grouping tests use simulated descriptors. These tests verify workflow and resume, not recognition accuracy on real children’s photos. Default recognition: YuNet + AdaFace IR-50 with constrained FAISS global grouping; SFace remains available as a legacy engine. See the [model sources and settings](docs/faces.md).

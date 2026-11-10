@@ -108,19 +108,24 @@ A hora usada é **12h de São Paulo**, pois a pasta só informa o dia. Os índic
 
 ### Encontrar fotos de cada pessoa
 
+A nova versão usa YuNet + AdaFace IR-50 e agrupamento global com FAISS. Reexecute o instalador ao atualizar. A saída antiga é preservada; as fotos precisam ser analisadas novamente. Grupos sem nome precisam aparecer em pelo menos duas fotos. Rostos isolados, pequenos ou desfocados ficam em `REVIEW.html`, sem criar milhares de pastas automaticamente. Menos pastas não comprova maior precisão.
+
+A análise pode ser interrompida e retomada usando o cache. `--regroup` refaz os grupos com os descritores já calculados e arquiva a saída anterior. Nomes podem ser importados com `--labels-from /caminho/do/resultado`; uniões manuais sem nome não são transferidas. Crescimento infantil e pessoas parecidas ainda podem causar separações ou uniões incorretas. [Configurações e detalhes em inglês](docs/faces.md).
+
 Execute **Instalar reconhecimento.command** e, depois que a coleção estiver estável, **Separar fotos por pessoa.command**. Arraste a pasta de origem para a janela quando solicitado.
 
 O resultado é criado ao lado da origem:
 
 ```text
-colecao_por_pessoa/
+colecao_por_pessoa_v2/
   PESSOAS.html
   Pessoa_0001/
     PRINCIPAL.jpg
     PRINCIPAL-origem.txt
     fotos/...
   Pessoa_0002/...
-  Sem_rosto_detectado/...
+  REVIEW.html
+  Needs_review/...
 ```
 
 A imagem principal é um recorte do rosto escolhido para facilitar a revisão. Uma foto coletiva é copiada para os grupos correspondentes; isso ocupa espaço adicional. Os originais permanecem intactos.
@@ -164,7 +169,7 @@ python3 -m venv .venv-pessoas
 
 Um teste usa os modelos reais em uma imagem artificial sem rosto; os testes de agrupamento usam vetores simulados. Isso verifica o fluxo e a retomada, não a precisão em fotos reais de crianças.
 
-Documentação adicional: [v1](README_v1.md) · [v2](README_v2.md) · [v3](README_v3.md) · [v4](README_v4.md). Reconhecimento baseado nos modelos oficiais [YuNet/SFace do OpenCV](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html).
+Documentação adicional: [v1](README_v1.md) · [v2](README_v2.md) · [v3](README_v3.md) · [v4](README_v4.md). Reconhecimento com YuNet, AdaFace IR-50 e FAISS; SFace disponível como opção antiga. [Fontes dos modelos](docs/faces.md).
 
 Os comentários, mensagens do Terminal e a galeria gerada usam inglês. Os nomes antigos de arquivos e parâmetros continuam compatíveis; a documentação principal apresenta os novos nomes em inglês.
 
