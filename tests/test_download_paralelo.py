@@ -1,4 +1,4 @@
-"""Testa concorrência e retomada somente com rede simulada e fotos artificiais."""
+"""Test concurrency and resume using simulated network responses and artificial photos."""
 import contextlib
 import io
 import json
@@ -28,7 +28,7 @@ class ParallelTests(unittest.TestCase):
             self.assertEqual(waiting.call_count,2)
 
     def test_timer_does_not_retry_auth_or_disk(self):
-        for error in [app.DownloadError('sessão expirada'),PermissionError('disco')]:
+        for error in [app.DownloadError('session expired'),PermissionError('disco')]:
             with patch.object(app,'wait_to_restart') as waiting:
                 with self.assertRaises(type(error)):
                     app.automatic_restart(lambda: (_ for _ in ()).throw(error))
@@ -54,7 +54,7 @@ class ParallelTests(unittest.TestCase):
         barrier=threading.Barrier(3);results=[]
         def worker(i):
             barrier.wait(timeout=3)
-            if i==0:raise app.DownloadError('erro simulado')
+            if i==0:raise app.DownloadError('simulated error')
             time.sleep(.02)
             return i
         with self.assertRaises(app.DownloadError):
@@ -75,7 +75,7 @@ class ParallelTests(unittest.TestCase):
                 app.main()
                 first=json.loads((dest/'indice.json').read_text());self.assertEqual(len(first['photos']),3)
                 before={i:(dest/x['file']).stat().st_mtime_ns for i,x in first['photos'].items()}
-                # Cada execução limita novas fotos, não fotos já salvas.
+                # Each run limits new photos, rather than photos already saved.
                 app.main()
                 final=json.loads((dest/'indice.json').read_text());self.assertEqual(len(final['photos']),5)
                 for i,mtime in before.items():self.assertEqual((dest/final['photos'][i]['file']).stat().st_mtime_ns,mtime)

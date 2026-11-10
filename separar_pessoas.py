@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agrupa rostos localmente e copia fotos, com uma imagem principal por pessoa."""
+"""Group faces locally and copy photos, with a representative image for each person."""
 import argparse
 import hashlib
 import json
@@ -25,7 +25,7 @@ def prepare_models(directory):
         if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == expected:
             continue
         url = f'https://media.githubusercontent.com/media/opencv/opencv_zoo/{REV}/models/{folder}/{filename}'
-        print(f'Baixando modelo oficial: {filename}', flush=True)
+        print(f'Downloading official model: {filename}', flush=True)
         tmp = path.with_suffix('.download')
         digest = hashlib.sha256()
         with urllib.request.urlopen(url, timeout=90) as response, tmp.open('wb') as target:
@@ -37,7 +37,7 @@ def prepare_models(directory):
                 target.write(chunk)
         if digest.hexdigest() != expected:
             tmp.unlink(missing_ok=True)
-            raise RuntimeError('O hash do modelo não confere; instalação interrompida.')
+            raise RuntimeError('Model checksum mismatch; installation stopped.')
         tmp.replace(path)
 
 
@@ -45,7 +45,7 @@ def check_models(directory):
     for name, (_, digest) in MODELS.items():
         path = directory/name
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-            raise RuntimeError('Modelos ausentes ou inválidos. Execute primeiro Instalar reconhecimento.command.')
+            raise RuntimeError('Models are missing or invalid. Run Install face recognition.command first.')
 
 
 def connect(path, config):
@@ -53,7 +53,7 @@ def connect(path, config):
     db.execute('CREATE TABLE IF NOT EXISTS config (value TEXT)')
     previous = db.execute('SELECT value FROM config').fetchone()
     if previous and json.loads(previous[0]) != config:
-        raise RuntimeError('Esta saída pertence a outra origem ou configuração. Escolha uma nova pasta de destino.')
+        raise RuntimeError('This output belongs to another source or configuration. Choose a new destination.')
     if not previous:
         db.execute('INSERT INTO config VALUES (?)', (json.dumps(config),))
     db.execute('CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, vector TEXT NOT NULL, count INTEGER NOT NULL, quality REAL NOT NULL, preview TEXT NOT NULL, review INTEGER NOT NULL DEFAULT 0)')
@@ -102,13 +102,13 @@ def save_preview(image, face, destination, cv2):
     right, bottom = min(width, int(x+w+pad)), min(height, int(y+h+pad))
     crop = image[top:bottom, left:right]
     if not crop.size:
-        raise RuntimeError('Recorte de rosto vazio.')
-    # Só o recorte de referência é convertido; as fotos completas são copiadas sem alteração.
+        raise RuntimeError('Empty face crop.')
+    # Only the reference crop is converted; full photos are copied unchanged.
     scale = min(1.0, 480/max(crop.shape[:2]))
     crop = cv2.resize(crop, (max(1,int(crop.shape[1]*scale)), max(1,int(crop.shape[0]*scale))))
     temporary = destination.with_name('PRINCIPAL.tmp.jpg')
     if not cv2.imwrite(str(temporary), crop, [cv2.IMWRITE_JPEG_QUALITY, 93]):
-        raise RuntimeError('Não foi possível salvar a foto principal.')
+        raise RuntimeError('Could not save the representative image.')
     temporary.replace(destination)
 
 
@@ -117,39 +117,39 @@ def gallery(db, destination):
     for pid, count, review in db.execute('SELECT p.id, COUNT(a.path), p.review FROM people p LEFT JOIN appearances a ON a.person=p.id GROUP BY p.id ORDER BY p.id'):
         folder = f'Pessoa_{pid:04d}'
         preview_source = db.execute('SELECT preview FROM people WHERE id=?',(pid,)).fetchone()[0]
-        (destination/folder/'PRINCIPAL-origem.txt').write_text('Foto usada no recorte principal: '+preview_source+'\n', encoding='utf-8')
-        cards.append(f'<a class="card" href="{folder}/"><img loading="lazy" src="{folder}/PRINCIPAL.jpg" alt="Rosto de referência do grupo {pid}"><strong>{folder}</strong><span>{count} fotos'+(' · revisar semelhança' if review else '')+'</span></a>')
-    document = '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Pessoas nas fotos</title><style>body{font:16px system-ui;background:#f2f4f7;color:#172033;padding:28px}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:20px}.card{display:flex;flex-direction:column;gap:8px;background:white;padding:12px;border-radius:12px;text-decoration:none;color:inherit}img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px}span{font-size:14px;color:#526077}</style><h1>Pessoas nas fotos</h1><p>Grupos por semelhança facial. Confira os rostos antes de nomear as pessoas. Abra a pasta da pessoa para ver as cópias.</p><main>'+''.join(cards)+'</main></html>'
+        (destination/folder/'PRINCIPAL-origem.txt').write_text('Source photo for the representative crop: '+preview_source+'\n', encoding='utf-8')
+        cards.append(f'<a class="card" href="{folder}/"><img loading="lazy" src="{folder}/PRINCIPAL.jpg" alt="Reference face for group {pid}"><strong>{folder}</strong><span>{count} photos'+(' · review similarity' if review else '')+'</span></a>')
+    document = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>People in photos</title><style>body{font:16px system-ui;background:#f2f4f7;color:#172033;padding:28px}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:20px}.card{display:flex;flex-direction:column;gap:8px;background:white;padding:12px;border-radius:12px;text-decoration:none;color:inherit}img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px}span{font-size:14px;color:#526077}</style><h1>People in photos</h1><p>Groups based on facial similarity. Review faces before assigning names. Open a person directory to see the copies.</p><main>'+''.join(cards)+'</main></html>'
     tmp = destination/'PESSOAS.tmp.html'; tmp.write_text(document, encoding='utf-8'); tmp.replace(destination/'PESSOAS.html')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('origem', nargs='?', help='Pasta de fotos a ler. Os originais nunca são modificados.')
-    parser.add_argument('--destino', help='Pasta de saída separada; padrão: NOME_DA_ORIGEM_por_pessoa ao lado da origem.')
-    parser.add_argument('--modelos', default=str(Path(__file__).resolve().parent/'.modelos-pessoas'))
-    parser.add_argument('--preparar-modelos', action='store_true', help='Somente instala modelos; não lê fotos.')
-    parser.add_argument('--limiar', type=float, default=0.48, help='Similaridade mínima (0 a 1); maior separa mais pessoas. Padrão 0.48.')
-    parser.add_argument('--margem', type=float, default=0.05, help='Diferença mínima entre os dois melhores grupos.')
-    parser.add_argument('--tamanho', type=int, default=1600, help='Maior lado usado na análise; original não é redimensionado.')
-    parser.add_argument('--max-fotos', type=int, help='Limita novas fotos analisadas para teste.')
+    parser.add_argument('origem', metavar='SOURCE', nargs='?', help='Source photo directory. Originals are never modified.')
+    parser.add_argument('--destination', '--destino', metavar='DIRECTORY', dest='destino', help='Separate output directory; default: SOURCE_NAME_por_pessoa next to the source.')
+    parser.add_argument('--models', '--modelos', metavar='DIRECTORY', dest='modelos', default=str(Path(__file__).resolve().parent/'.modelos-pessoas'))
+    parser.add_argument('--prepare-models', '--preparar-modelos', dest='preparar_modelos', action='store_true', help='Install models only; do not read photos.')
+    parser.add_argument('--threshold', '--limiar', metavar='SCORE', dest='limiar', type=float, default=0.48, help='Minimum similarity (0 to 1); higher values create more separate groups. Default 0.48.')
+    parser.add_argument('--margin', '--margem', metavar='SCORE', dest='margem', type=float, default=0.05, help='Minimum score difference between the two best groups.')
+    parser.add_argument('--size', '--tamanho', metavar='PIXELS', dest='tamanho', type=int, default=1600, help='Maximum image side for analysis; originals are not resized.')
+    parser.add_argument('--max-photos', '--max-fotos', metavar='COUNT', dest='max_fotos', type=int, help='Limit newly analyzed photos for testing.')
     args = parser.parse_args()
     os.umask(0o077)
     models = Path(args.modelos).resolve()
     if args.preparar_modelos:
         prepare_models(models)
-        print('Modelos instalados. Nenhuma pasta de fotos foi lida.')
+        print('Models installed. No photo directories were read.')
         return
     if not args.origem:
-        parser.error('Informe a pasta de origem explicitamente.')
+        parser.error('Specify the source directory explicitly.')
     if not 0 < args.limiar < 1 or not 0 <= args.margem < 1 or args.tamanho < 320 or (args.max_fotos is not None and args.max_fotos < 1):
-        parser.error('Parâmetros de análise inválidos.')
+        parser.error('Invalid analysis parameters.')
     source = Path(args.origem).expanduser().resolve()
     destination = Path(args.destino).expanduser().resolve() if args.destino else source.with_name(source.name+'_por_pessoa')
     if not source.is_dir() or source == destination or source in destination.parents or destination in source.parents:
-        parser.error('Origem e destino devem ser pastas separadas, sem uma dentro da outra.')
+        parser.error('Source and destination must be separate directories, neither inside the other.')
     check_models(models)
-    # Bibliotecas importadas só ao processar; --help e instalação não precisam ler imagens.
+    # Import libraries only for processing; help and installation do not read images.
     import cv2
     import numpy as np
     from PIL import Image, ImageOps
@@ -162,7 +162,7 @@ def main():
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        raise RuntimeError('Já existe uma execução neste destino.')
+        raise RuntimeError('Another process is already using this destination.')
     config = {'source':str(source), 'threshold':args.limiar, 'margin':args.margem, 'size':args.tamanho, 'version':1}
     db = connect(destination/'.pessoas.sqlite3', config)
     people = {pid:{'vector':np.array(json.loads(vector), dtype=np.float32), 'count':count, 'quality':quality, 'preview':preview, 'review':review} for pid,vector,count,quality,preview,review in db.execute('SELECT * FROM people')}
@@ -176,7 +176,7 @@ def main():
             previous = db.execute('SELECT size,modified FROM photos WHERE path=?', (relative,)).fetchone()
             if previous:
                 if previous != (stat.st_size,stat.st_mtime_ns):
-                    print(f'Arquivo mudou desde a análise; use outro destino para reanalisar: {relative}', file=sys.stderr)
+                    print(f'File changed since analysis; use another destination to analyze it again: {relative}', file=sys.stderr)
                     errors += 1
                 else:
                     skipped += 1
@@ -190,7 +190,7 @@ def main():
                 _, faces = detector.detect(image)
                 if faces is None:
                     faces = []
-                # Filtra rostos muito pequenos; evita grupos de baixa qualidade.
+                # Filter tiny faces to avoid low-quality groups.
                 faces = [f for f in faces if min(f[2],f[3]) >= 36]
                 used = set()
                 assignments = []
@@ -226,19 +226,19 @@ def main():
                     target.parent.mkdir(parents=True,exist_ok=True)
                     touched.append(target)
                     shutil.copy2(path,target)
-                # Só registra a foto se ela permaneceu estável durante a leitura.
+                # Record a photo only if it remained unchanged during processing.
                 now = path.stat()
                 if (now.st_size,now.st_mtime_ns) != (stat.st_size,stat.st_mtime_ns):
-                    raise RuntimeError('A origem mudou durante a análise. Termine os downloads antes de executar.')
+                    raise RuntimeError('The source changed during analysis. Finish downloads before running this script.')
                 db.execute('INSERT INTO photos VALUES (?,?,?,?)', (relative,stat.st_size,stat.st_mtime_ns,'faces' if assignments else 'no_face'))
                 db.commit()
                 committed = True
                 processed += 1
-                print(f'{processed} novas | {skipped} já analisadas | {len(people)} grupos | {relative}',flush=True)
+                print(f'{processed} new | {skipped} already analyzed | {len(people)} groups | {relative}',flush=True)
                 if processed % 25 == 0:
                     gallery(db,destination)
                 if args.max_fotos and processed >= args.max_fotos:
-                    print('Limite de teste atingido. Execute novamente para continuar.')
+                    print('Test limit reached. Run again to continue.')
                     break
             except (Exception, KeyboardInterrupt) as exc:
                 db.rollback()
@@ -252,12 +252,12 @@ def main():
                             preview_path.write_bytes(content)
                 if isinstance(exc, KeyboardInterrupt):
                     raise
-                # Recarrega vetores persistidos para não incorporar uma foto que falhou.
+                # Reload saved vectors to exclude a failed photo.
                 people = {pid:{'vector':np.array(json.loads(v),dtype=np.float32),'count':n,'quality':q,'preview':p,'review':r} for pid,v,n,q,p,r in db.execute('SELECT * FROM people')}
                 errors += 1
-                print(f'Não foi possível processar {relative}: {exc}',file=sys.stderr,flush=True)
+                print(f'Could not process {relative}: {exc}',file=sys.stderr,flush=True)
         gallery(db,destination)
-        print(f'Finalizado: {processed} novas; {skipped} já analisadas; {len(people)} grupos; {errors} erros. Abra {destination / "PESSOAS.html"}',flush=True)
+        print(f'Finished: {processed} new; {skipped} already analyzed; {len(people)} groups; {errors} errors. Open {destination / "PESSOAS.html"}',flush=True)
     finally:
         gallery(db,destination)
         db.close()
@@ -271,8 +271,8 @@ if __name__ == '__main__':
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print('\nInterrompido. Execute de novo com a mesma origem e destino para continuar.',file=sys.stderr)
+        print('\nInterrupted. Run again with the same source and destination to continue.',file=sys.stderr)
         sys.exit(130)
     except Exception as exc:
-        print(f'Erro: {exc}',file=sys.stderr)
+        print(f'Error: {exc}',file=sys.stderr)
         sys.exit(1)

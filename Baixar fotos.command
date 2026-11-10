@@ -1,14 +1,14 @@
 #!/bin/zsh
 cd -- "${0:A:h}" || exit 1
-print 'Data inicial (AAAA-MM-DD; Enter para todo o histórico):'
+print 'Start date (YYYY-MM-DD; Enter for full history):'
 read inicio
-print 'Data final (AAAA-MM-DD; Enter para a mais recente):'
+print 'End date (YYYY-MM-DD; Enter for the latest):'
 read fim
 filtros=()
-[[ -n "$inicio" ]] && filtros+=(--de "$inicio")
-[[ -n "$fim" ]] && filtros+=(--ate "$fim")
+[[ -n "$inicio" ]] && filtros+=(--from "$inicio")
+[[ -n "$fim" ]] && filtros+=(--to "$fim")
 python3 baixar_momentos.py --curl .private/session.curl "${filtros[@]}"
 result=$?
-print '\nPressione Enter para fechar.'
+print '\nPress Enter to close.'
 read answer
 exit $result

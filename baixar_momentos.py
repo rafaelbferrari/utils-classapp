@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Baixa fotos de Momentos por HTTP. Não executa comandos cURL recebidos."""
+"""Download Moments photos over HTTP. Never execute supplied cURL commands."""
 import argparse
 import base64
 from datetime import date, datetime
@@ -26,19 +26,19 @@ class DownloadError(Exception):
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise DownloadError('Redirecionamento inesperado; download interrompido.')
+        raise DownloadError('Unexpected redirect; download stopped.')
 
 OPENER = urllib.request.build_opener(NoRedirect)
 
 def validate_url(url, hosts):
     p = urllib.parse.urlsplit(url)
     if p.scheme != 'https' or p.hostname not in hosts or p.username or p.password or p.port not in (None, 443):
-        raise DownloadError('Destino de rede não autorizado pelo script.')
+        raise DownloadError('Network destination is not allowed by this script.')
     return p
 
 def request(url, headers=None, payload=None):
     attempts = 6
-    stage = 'consulta de publicações' if urllib.parse.urlsplit(url).hostname == API_HOST else 'download de foto'
+    stage = 'publication lookup' if urllib.parse.urlsplit(url).hostname == API_HOST else 'photo download'
     for attempt in range(attempts):
         req = urllib.request.Request(url, headers=headers or {}, data=payload)
         reason = None
@@ -47,17 +47,17 @@ def request(url, headers=None, payload=None):
                 return response.read(), response.headers.get_content_type()
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
-                raise DownloadError('Sessão expirada ou acesso recusado. Copie uma nova chamada autenticada do Chrome.') from None
+                raise DownloadError('Session expired or access denied. Copy a new authenticated request from Chrome.') from None
             if exc.code not in (429, 500, 502, 503, 504):
-                raise DownloadError(f'Falha HTTP {exc.code} durante {stage}.') from None
+                raise DownloadError(f'HTTP {exc.code} failed during {stage}.') from None
             reason = f'HTTP {exc.code}'
         except (urllib.error.URLError, socket.timeout, TimeoutError,
                 ConnectionError, http.client.IncompleteRead, http.client.RemoteDisconnected) as exc:
-            reason = 'tempo de espera esgotado' if isinstance(exc, (socket.timeout, TimeoutError)) else 'conexão interrompida'
+            reason = 'timed out' if isinstance(exc, (socket.timeout, TimeoutError)) else 'connection interrupted'
         if attempt == attempts - 1:
-            raise DownloadError(f'Falha após {attempts} tentativas durante {stage}: {reason}. Execute novamente para retomar as fotos já salvas.') from None
+            raise DownloadError(f'Failed after {attempts} attempts during {stage}: {reason}. Run again to resume using the saved photos.') from None
         delay = min(30, 2 ** (attempt + 1))
-        print(f'Falha temporária durante {stage} ({reason}). Nova tentativa {attempt + 2}/{attempts} em {delay}s.', flush=True)
+        print(f'Temporary failure during {stage} ({reason}). Attempt {attempt + 2}/{attempts} in {delay}s.', flush=True)
         time.sleep(delay)
 
 def read_har(path):
@@ -73,25 +73,25 @@ def read_har(path):
             if content.get('encoding') == 'base64':
                 raw = base64.b64decode(raw)
             return entry['request']['url'], payload, json.loads(raw)
-    raise DownloadError('Captura sem EntityMomentsQuery. Abra Network e recarregue Momentos antes de exportar.')
+    raise DownloadError('Capture has no EntityMomentsQuery. Open Network and reload Moments before exporting.')
 
 def parse_curl(text):
-    # shlex interpreta aspas; nunca executar este texto em shell/subprocess.
+    # shlex handles quoting; never execute this text in a shell or subprocess.
     parts = shlex.split(text.replace('\\\n', ''))
     if not parts or parts[0] != 'curl':
-        raise DownloadError('Esperava o texto de “Copy as cURL” do Chrome.')
+        raise DownloadError('Expected the text from Chrome’s Copy as cURL.')
     url, headers, payload = None, {}, None
     i = 1
     while i < len(parts):
         part = parts[i]
         if part.startswith('https://'):
             if url is not None:
-                raise DownloadError('Forneça apenas uma chamada cURL.')
+                raise DownloadError('Provide exactly one cURL request.')
             url = part
         elif part in ('-H', '--header', '-b', '--cookie', '--data-raw', '--data', '--data-binary', '-d', '-X', '--request'):
             i += 1
             if i >= len(parts):
-                raise DownloadError('Chamada cURL incompleta.')
+                raise DownloadError('Incomplete cURL request.')
             value = parts[i]
             if part in ('-H', '--header'):
                 name, sep, val = value.partition(':')
@@ -99,31 +99,31 @@ def parse_curl(text):
                     headers[name.lower()] = val.strip()
             elif part in ('-b', '--cookie'):
                 if '=' not in value:
-                    raise DownloadError('Cookie deve estar no texto; arquivos de cookies não são aceitos.')
+                    raise DownloadError('Cookies must be inline; cookie files are not supported.')
                 headers['cookie'] = value
             elif part in ('--data-raw', '--data', '--data-binary', '-d'):
                 payload = json.loads(bytes(value[1:], 'utf8').decode('unicode_escape') if value.startswith('$') else value)
         i += 1
     if not url or not payload:
-        raise DownloadError('Copie a chamada POST EntityMomentsQuery, não a requisição OPTIONS.')
+        raise DownloadError('Copy the EntityMomentsQuery POST request, rather than OPTIONS.')
     p = validate_url(url, {API_HOST})
     if p.path != '/graphql' or payload.get('operationName') != 'EntityMomentsQuery':
-        raise DownloadError('Use a chamada EntityMomentsQuery do ClassApp.')
+        raise DownloadError('Use the ClassApp EntityMomentsQuery request.')
     if not any(headers.get(k) for k in ('cookie', 'authorization')):
-        raise DownloadError('Chamada sem cookie/autorização. O HAR sanitizado não contém autenticação.')
+        raise DownloadError('Request has no cookie or authorization. Sanitized HAR files do not contain authentication.')
     headers['content-type'] = 'application/json'
     return url, payload, headers
 
 def moments(data):
     if data.get('errors'):
-        raise DownloadError('A API retornou erro GraphQL. Verifique a sessão e a consulta; nenhum detalhe privado foi impresso.')
+        raise DownloadError('The API returned a GraphQL error. Check the session and query; private details were not printed.')
     try:
         connection = data['data']['node']['moments']
         assert isinstance(connection['nodes'], list)
         assert isinstance(connection['pageInfo']['hasNextPage'], bool)
         return connection
     except (KeyError, TypeError, AssertionError):
-        raise DownloadError('Resposta inesperada da API de Momentos.') from None
+        raise DownloadError('Unexpected Moments API response.') from None
 
 def atomic_json(path, data):
     tmp = path.with_suffix('.tmp')
@@ -136,7 +136,7 @@ def parse_date(value):
             raise ValueError
         return date.fromisoformat(value)
     except ValueError:
-        raise argparse.ArgumentTypeError('Use uma data válida no formato AAAA-MM-DD.') from None
+        raise argparse.ArgumentTypeError('Use a valid date in YYYY-MM-DD format.') from None
 
 def publication_date(value):
     try:
@@ -145,43 +145,43 @@ def publication_date(value):
             raise ValueError
         return stamp.astimezone(ZoneInfo('America/Sao_Paulo')).date()
     except (ValueError, TypeError, AttributeError):
-        raise DownloadError('Data de publicação ausente ou inválida; filtro não pode ser aplicado.') from None
+        raise DownloadError('Missing or invalid publication date; cannot apply the filter.') from None
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--curl', metavar='ARQUIVO', help='Arquivo Copy as cURL; use - para colar pela entrada padrão.')
+    parser.add_argument('--curl', metavar='FILE', help='Copy as cURL file; use - to read standard input.')
     parser.add_argument('--har', default='.private/momentos.har')
-    parser.add_argument('--pagina-capturada', action='store_true', help='Somente a página no HAR, sem consultar páginas adicionais.')
-    parser.add_argument('--destino', default='fotos')
-    parser.add_argument('--max-fotos', type=int, help='Limita fotos novas, útil para teste.')
-    parser.add_argument('--listar', action='store_true', help='Conta fotos sem baixá-las.')
-    parser.add_argument('--de', type=parse_date, help='Data inicial inclusiva: AAAA-MM-DD (São Paulo).')
-    parser.add_argument('--ate', type=parse_date, help='Data final inclusiva: AAAA-MM-DD (São Paulo).')
+    parser.add_argument('--captured-page', '--pagina-capturada', dest='pagina_capturada', action='store_true', help='Use only the captured HAR page, without fetching more pages.')
+    parser.add_argument('--destination', '--destino', metavar='DIRECTORY', dest='destino', default='fotos')
+    parser.add_argument('--max-photos', '--max-fotos', metavar='COUNT', dest='max_fotos', type=int, help='Limit new photos, useful for testing.')
+    parser.add_argument('--count-only', '--listar', dest='listar', action='store_true', help='Count photos without downloading them.')
+    parser.add_argument('--from', '--de', metavar='DATE', dest='de', type=parse_date, help='Inclusive start date: YYYY-MM-DD (Sao Paulo).')
+    parser.add_argument('--to', '--ate', metavar='DATE', dest='ate', type=parse_date, help='Inclusive end date: YYYY-MM-DD (Sao Paulo).')
     args = parser.parse_args()
     if args.de and args.ate and args.de > args.ate:
-        parser.error('--de deve ser anterior ou igual a --ate')
+        parser.error('--from must be earlier than or equal to --to')
     if args.max_fotos is not None and args.max_fotos < 1:
-        parser.error('--max-fotos deve ser positivo')
+        parser.error('--max-photos must be positive')
     os.umask(0o077)
     if args.pagina_capturada:
         _, payload, cached = read_har(args.har)
-        print('MODO CAPTURA: apenas uma página; não representa todo o histórico.', flush=True)
+        print('CAPTURE MODE: one page only; this is not the full history.', flush=True)
         url, headers = None, None
     elif args.curl:
         if args.curl == '-':
-            print('Cole Copy as cURL e termine com Ctrl+D numa linha vazia:', file=sys.stderr)
+            print('Paste Copy as cURL and finish with Ctrl+D on an empty line:', file=sys.stderr)
             text = sys.stdin.read()
         else:
             text = Path(args.curl).read_text()
         url, payload, headers = parse_curl(text)
         cached = None
     else:
-        parser.error('Use --curl ARQUIVO (histórico completo) ou --pagina-capturada (teste da captura).')
+        parser.error('Use --curl FILE (full history) or --captured-page (capture test).')
     variables = payload['variables']
     variables.update(deleteNotifications=False, updateStatus=None, updateAccessed=False, offset=0, search='')
     variables['orderBy'] = {'column': 'CREATED', 'direction': 'DESC'}
     if args.de or args.ate:
-        print(f'Período de publicação: {args.de or "início do histórico"} até {args.ate or "mais recente"} (São Paulo, inclusive).', flush=True)
+        print(f'Publication period: {args.de or "start of history"} to {args.ate or "latest"} (Sao Paulo, inclusive).', flush=True)
     dest = Path(args.destino).resolve()
     dest.mkdir(parents=True, exist_ok=True)
     manifest_path = dest / 'indice.json'
@@ -197,12 +197,12 @@ def main():
             try:
                 result = json.loads(body)
             except ValueError:
-                raise DownloadError('Resposta da API não é JSON.') from None
+                raise DownloadError('The API response is not JSON.') from None
         connection = moments(result)
         nodes = connection['nodes']
         fresh = [p for p in nodes if str(p['id']) not in seen_posts]
         if nodes and not fresh:
-            raise DownloadError('A paginação repetiu a mesma página; execução interrompida.')
+            raise DownloadError('Pagination repeated the same page; execution stopped.')
         for post in fresh:
             seen_posts.add(str(post['id']))
             posts += 1
@@ -228,12 +228,12 @@ def main():
                         continue
                 image_url = media.get('uri')
                 if not image_url:
-                    raise DownloadError('Foto sem URL disponível.')
+                    raise DownloadError('Photo has no available URL.')
                 validate_url(image_url, IMAGE_HOSTS)
-                # Nunca encaminhar a sessão da API para o servidor de imagens.
+                # Never forward API session credentials to the image server.
                 image, content_type = request(image_url, {'Referer': 'https://classapp.co/', 'User-Agent': 'Mozilla/5.0'})
                 if not content_type.startswith('image/') or not image:
-                    raise DownloadError('O servidor retornou conteúdo que não é uma imagem.')
+                    raise DownloadError('The server returned content that is not an image.')
                 date = str(post.get('created', 'sem-data'))[:10]
                 safe = lambda s: re.sub(r'[^a-zA-Z0-9_.-]', '_', str(s))[:100]
                 suffix = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic'}.get(content_type, '.img')
@@ -243,52 +243,52 @@ def main():
                 tmp = target.with_suffix('.part')
                 tmp.write_bytes(image)
                 tmp.replace(target)
-                state['photos'][key] = {'file': str(relative), 'sha256': hashlib.sha256(image).hexdigest(), 'bytes': len(image), 'moment_id': str(post['id']), 'created': post.get('created'), 'original_name': media.get('origName'), 'quality': 'uri(size: w1280) conforme consulta observada'}
+                state['photos'][key] = {'file': str(relative), 'sha256': hashlib.sha256(image).hexdigest(), 'bytes': len(image), 'moment_id': str(post['id']), 'created': post.get('created'), 'original_name': media.get('origName'), 'quality': 'uri(size: w1280) as observed in the query'}
                 atomic_json(manifest_path, state)
                 downloaded += 1
-                print(f'Baixadas: {downloaded} | já salvas: {skipped}', flush=True)
+                print(f'Downloaded: {downloaded} | already saved: {skipped}', flush=True)
                 if args.max_fotos and downloaded >= args.max_fotos:
-                    print('Limite de teste atingido. Histórico ainda não concluído.')
+                    print('Test limit reached. History is not complete yet.')
                     return
                 time.sleep(0.15)
-        print(f'Publicações: {posts} | referências a fotos: {counted}', flush=True)
+        print(f'Publications: {posts} | photo references: {counted}', flush=True)
         if reached_start or args.pagina_capturada or not connection['pageInfo']['hasNextPage']:
             break
         if not nodes:
-            raise DownloadError('API indicou próxima página, mas retornou uma página vazia.')
+            raise DownloadError('The API indicated another page but returned an empty one.')
         variables['offset'] += len(nodes)
         time.sleep(0.5)
-    print(('Página capturada concluída.' if args.pagina_capturada else ('Período solicitado concluído.' if args.de or args.ate else 'Histórico disponível concluído.')) + f' Novas: {downloaded}; já salvas: {skipped}; fotos encontradas: {counted}.')
+    print(('Captured page complete.' if args.pagina_capturada else ('Requested period complete.' if args.de or args.ate else 'Available history complete.')) + f' New: {downloaded}; already saved: {skipped}; photos found: {counted}.')
 
 def describe_error(exc):
-    """Diagnóstico sem imprimir cookies, URLs assinadas ou conteúdo da API."""
+    """Report diagnostics without exposing cookies, signed URLs, or API content."""
     if isinstance(exc, DownloadError):
         return str(exc)
     filename = getattr(exc, 'filename', None)
     file_label = ''
     if filename:
-        name = Path(str(filename)).name if '://' not in str(filename) else '(rede)'
-        file_label = f' Arquivo: {name}.'
+        name = Path(str(filename)).name if '://' not in str(filename) else '(network)'
+        file_label = f' File: {name}.'
     if isinstance(exc, FileNotFoundError):
-        return 'Arquivo ou pasta não encontrado.' + file_label
+        return 'File or directory not found.' + file_label
     if isinstance(exc, PermissionError):
-        return 'Sem permissão para ler ou gravar.' + file_label
+        return 'Permission denied while reading or writing.' + file_label
     if isinstance(exc, json.JSONDecodeError):
-        return f'JSON inválido ou incompleto (linha {exc.lineno}, coluna {exc.colno}). Pode ser o índice ou a configuração.'
+        return f'Invalid or incomplete JSON (line {exc.lineno}, column {exc.colno}). Check the index or configuration.'
     if isinstance(exc, UnicodeError):
-        return 'Não foi possível decodificar o arquivo ou a resposta recebida.'
+        return 'Could not decode the file or received response.'
     if isinstance(exc, OSError):
         import errno
         code = getattr(exc, 'errno', None)
-        reasons = {errno.ENOSPC: 'Espaço insuficiente no disco.', errno.EROFS: 'O destino está em um disco somente para leitura.', errno.EMFILE: 'Limite de arquivos abertos atingido.', errno.EIO: 'Falha de entrada/saída no disco ou dispositivo.', errno.ENAMETOOLONG: 'Nome de arquivo ou caminho muito longo.', errno.ETIMEDOUT: 'Tempo de conexão esgotado.'}
-        return reasons.get(code, f'Falha de leitura, gravação ou conexão ({type(exc).__name__}, código {code}).') + file_label
+        reasons = {errno.ENOSPC: 'Not enough disk space.', errno.EROFS: 'The destination is on a read-only disk.', errno.EMFILE: 'Open file limit reached.', errno.EIO: 'Disk or device input/output failure.', errno.ENAMETOOLONG: 'File name or path is too long.', errno.ETIMEDOUT: 'Connection timed out.'}
+        return reasons.get(code, f'Read, write, or connection failure ({type(exc).__name__}, code {code}).') + file_label
     if isinstance(exc, ValueError):
-        return 'Configuração ou data inválida; confira o texto cURL e o formato das datas.'
-    return f'Falha ao executar ferramenta de metadados ({type(exc).__name__}). Confira se o ExifTool está instalado.'
+        return 'Invalid configuration or date; check the cURL text and date format.'
+    return f'Metadata tool failed ({type(exc).__name__}). Check that ExifTool is installed.'
 
 def report_error(exc):
     message = describe_error(exc)
-    print(f'Erro: {message}', file=sys.stderr)
+    print(f'Error: {message}', file=sys.stderr)
     try:
         import traceback
         log = Path(__file__).resolve().parent / 'erros_download.log'
@@ -297,9 +297,9 @@ def report_error(exc):
         with log.open('a', encoding='utf-8') as output:
             stamp = datetime.now(ZoneInfo('America/Sao_Paulo')).isoformat(timespec='seconds')
             output.write(f'{stamp} | {type(exc).__name__} | {message} | {location}\n')
-        print(f'Diagnóstico salvo em: {log}', file=sys.stderr)
+        print(f'Diagnostics saved to: {log}', file=sys.stderr)
     except OSError:
-        print('Também não foi possível gravar o log de diagnóstico.', file=sys.stderr)
+        print('Could not write the diagnostic log either.', file=sys.stderr)
 
 if __name__ == '__main__':
     try:
@@ -308,5 +308,5 @@ if __name__ == '__main__':
         report_error(exc)
         sys.exit(1)
     except KeyboardInterrupt:
-        print('\nInterrompido. Execute novamente para retomar.', file=sys.stderr)
+        print('\nInterrupted. Run again to resume.', file=sys.stderr)
         sys.exit(130)

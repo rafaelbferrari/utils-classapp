@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consulta a publicação mais antiga e o primeiro Momento com fotos; não baixa imagens."""
+"""Find the oldest publication and oldest Moment with photos, without downloading images."""
 import argparse
 from datetime import datetime
 import json
@@ -27,7 +27,7 @@ $updateStatus: RecipientStatus, $updateAccessed: Boolean) {
 def timestamp(value):
     result = datetime.fromisoformat(value.replace('Z', '+00:00'))
     if result.tzinfo is None:
-        raise api.DownloadError('Publicação sem fuso horário na resposta.')
+        raise api.DownloadError('The response contains a publication without a time zone.')
     return result.astimezone(ZoneInfo('America/Sao_Paulo'))
 
 
@@ -41,18 +41,18 @@ def consult(url, headers, entity_id):
     while True:
         payload = {'operationName':'EntityMomentsQuery','query':QUERY,'variables':variables}
         body, _ = api.automatic_restart(lambda: api.request(url, headers, json.dumps(payload).encode()),
-                                        60, 3, 'Consulta de datas')
+                                        60, 3, 'Date lookup')
         try:
             connection = api.moments(json.loads(body))
         except ValueError:
-            raise api.DownloadError('Resposta da consulta não é JSON válido.') from None
+            raise api.DownloadError('The lookup response is not valid JSON.') from None
         nodes = connection['nodes']
         pages += 1
-        print(f'Consultando datas: página {pages}. Nenhuma imagem é baixada.',flush=True)
+        print(f'Checking dates: page {pages}. No images are downloaded.',flush=True)
         for post in nodes:
             key = str(post['id'])
             if key in seen:
-                raise api.DownloadError('A API repetiu publicações; não foi possível confirmar a data mais antiga.')
+                raise api.DownloadError('The API repeated publications; could not confirm the oldest date.')
             seen.add(key)
             stamp = timestamp(post['created'])
             if first is None or stamp < first:
@@ -62,42 +62,42 @@ def consult(url, headers, entity_id):
         if not connection['pageInfo']['hasNextPage']:
             break
         if not nodes:
-            raise api.DownloadError('Página vazia apesar da indicação de mais publicações.')
+            raise api.DownloadError('Empty page despite an indication of more publications.')
         variables['offset'] += len(nodes)
     return {'primeiro_momento':first.isoformat() if first else None,
             'primeiro_momento_com_fotos':first_photo.isoformat() if first_photo else None,
             'data_inicial_para_download':first_photo.date().isoformat() if first_photo else None,
             'fuso':'America/Sao_Paulo','paginas_consultadas':pages,
-            'observacao':'Datas de publicação disponíveis para este perfil; não são datas comprovadas de captura das fotos.'}
+            'observacao':'Publication dates available to this profile, not verified photo capture dates.'}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--curl',default=str(Path(__file__).resolve().parent/'.private/session.curl'))
-    parser.add_argument('--saida',default=str(Path(__file__).resolve().parent/'datas_disponiveis.json'))
+    parser.add_argument('--output', '--saida', metavar='FILE', dest='saida',default=str(Path(__file__).resolve().parent/'datas_disponiveis.json'))
     args = parser.parse_args()
     api._STOP.clear()
     raw = sys.stdin.read() if args.curl == '-' else Path(args.curl).read_text()
     url, original, headers = api.parse_curl(raw)
     result = consult(url,headers,original['variables']['entityId'])
     if result['primeiro_momento']:
-        print('Momento mais antigo:',timestamp(result['primeiro_momento']).strftime('%d/%m/%Y às %H:%M'))
+        print('Oldest Moment:',timestamp(result['primeiro_momento']).strftime('%d/%m/%Y at %H:%M'))
     else:
-        print('Nenhum Momento disponível neste perfil.')
+        print('No Moments are available to this profile.')
     if result['data_inicial_para_download']:
-        print('Primeiro Momento com fotos:',timestamp(result['primeiro_momento_com_fotos']).strftime('%d/%m/%Y às %H:%M'))
-        print('Data inicial que você pode usar no downloader:',result['data_inicial_para_download'])
+        print('Oldest Moment with photos:',timestamp(result['primeiro_momento_com_fotos']).strftime('%d/%m/%Y at %H:%M'))
+        print('Start date to use in the downloader:',result['data_inicial_para_download'])
     else:
-        print('Nenhum Momento com fotos disponível neste perfil.')
+        print('No Moments with photos are available to this profile.')
     api.atomic_json(Path(args.saida), result)
-    print('Resultado salvo em:',args.saida)
+    print('Result saved to:',args.saida)
 
 
 if __name__=='__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print('\nConsulta interrompida.',file=sys.stderr)
+        print('\nLookup interrupted.',file=sys.stderr)
         sys.exit(130)
     except (api.DownloadError,OSError,ValueError) as exc:
         api.report_error(exc)

@@ -1,4 +1,4 @@
-# Sessões, credenciais e capturas de rede
+# Sessions, credentials, and network captures
 .private/
 .env
 .env.*
@@ -8,7 +8,7 @@
 *.pem
 *.key
 
-# Fotos, vídeos, backups e modelos (somente código no repositório)
+# Photos, videos, backups, and models (code-only repository)
 *.jpg
 *.jpeg
 *.png
@@ -29,7 +29,7 @@ fotos_v4/
 *_por_pessoa/
 .modelos-pessoas/
 
-# Dados e relatórios locais
+# Local data and reports
 *.json
 *.sqlite
 *.sqlite3
@@ -40,7 +40,7 @@ fotos_v4/
 *.part
 *.download
 
-# Ambientes e arquivos do sistema
+# Environments and system files
 .venv*/
 venv/
 __pycache__/

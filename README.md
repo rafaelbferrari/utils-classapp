@@ -1,64 +1,59 @@
 # Utils ClassApp
 
-Ferramentas locais para salvar e organizar fotos de **Momentos** às quais sua própria conta do ClassApp já tem acesso. Pensadas para famílias que querem guardar o histórico escolar, escolher um período e organizar as fotos depois.
+[English](README.md) · [Português (Brasil)](README.pt-BR.md)
 
-Os downloads usam chamadas HTTP diretas. O reconhecimento facial roda no Mac. Nenhuma etapa precisa de um serviço de IA na nuvem ou consome tokens de IA. Projeto independente, sem vínculo com o ClassApp.
+Local macOS tools to back up and organize photos from **Moments** that your own ClassApp account can already access. Download a date range, keep useful photo dates, and group photos by similar faces.
 
-**Este repositório contém somente código, documentação e testes artificiais. Não inclui fotos, sessões, tokens, relatórios de conta ou descritores de rostos.**
+Downloads use direct HTTP requests. Face grouping runs locally. No cloud AI service or AI tokens are required. This is an independent project, not affiliated with ClassApp.
 
-## Qual ferramenta usar?
+**The repository contains code, documentation, and synthetic tests only. Photos, account sessions, credentials, reports, models, and face descriptors are not included.**
 
-| Tarefa | Abra no Mac | O que faz e quando é útil |
+## Choose a tool
+
+| Task | macOS launcher | Why it is useful |
 | --- | --- | --- |
-| Baixar fotos em lote | **[Baixar fotos turbo.command](Baixar%20fotos%20turbo.command)** | Versão mais recente: até 32 imagens simultâneas, 12 por padrão. Permite escolher datas, retomar arquivos já salvos e recuperar falhas temporárias. |
-| Descobrir o começo do histórico | [Consultar primeira data.command](Consultar%20primeira%20data.command) | Consulta a publicação mais antiga e a mais antiga com fotos disponíveis para o perfil, sem baixar imagens. |
-| Corrigir datas de fotos existentes | [Ajustar datas das fotos.command](Ajustar%20datas%20das%20fotos.command) | Usa as pastas `AAAA-MM-DD` para ajustar EXIF/XMP e datas no Finder, sem acessar o ClassApp. |
-| Separar fotos por pessoa | [Separar fotos por pessoa.command](Separar%20fotos%20por%20pessoa.command) | Agrupa rostos semelhantes, copia as fotos para pastas de pessoas e gera uma foto principal e uma galeria para revisar os grupos. |
-| Preparar reconhecimento facial | [Instalar reconhecimento.command](Instalar%20reconhecimento.command) | Instala bibliotecas em ambiente separado e baixa os modelos públicos oficiais. Não processa fotos. |
+| Download photos | **[Download photos turbo.command](Download%20photos%20turbo.command)** | Latest downloader: up to 32 concurrent images, 12 by default, date filters, resume, and automatic recovery. |
+| Find the start of your history | [Find oldest date.command](Find%20oldest%20date.command) | Finds the oldest accessible publication and oldest publication with photos without downloading images. |
+| Correct dates in an existing collection | [Fix photo dates.command](Fix%20photo%20dates.command) | Uses `YYYY-MM-DD` directories to update EXIF/XMP and Finder dates, without contacting ClassApp. |
+| Group photos by person | [Group photos by person.command](Group%20photos%20by%20person.command) | Copies photos into face-similarity groups and creates a representative face crop and a gallery for review. |
+| Install face grouping dependencies | [Install face recognition.command](Install%20face%20recognition.command) | Installs an isolated environment and downloads official public models. Does not process photos. |
 
-### Versões de download
+### Download versions
 
-| Versão | Script | Diferença |
+| Version | Python script | Features |
 | --- | --- | --- |
-| v1 | `baixar_momentos.py` / `Baixar fotos.command` | Download sequencial simples, filtros de publicação e retomada. |
-| v2 | `baixar_momentos_v2.py` / `Baixar fotos v2.command` | Acrescenta datas EXIF/XMP e criação/modificação no Mac; também copia e corrige arquivos da v1. |
-| v3 | `baixar_momentos_v3.py` / `Baixar fotos rapido.command` | Até 16 simultâneos, 12 por padrão, índice centralizado e timer de recuperação. |
-| **v4** | **`baixar_momentos_v4.py` / `Baixar fotos turbo.command`** | **Até 32 simultâneos, mantendo 12 por padrão. Recomendação para novos downloads.** |
+| v1 | `baixar_momentos.py` | Sequential downloads, publication-date filters, and index-based resume. |
+| v2 | `baixar_momentos_v2.py` | Adds EXIF/XMP and macOS file dates; can also copy and correct v1 downloads. |
+| v3 | `baixar_momentos_v3.py` | Up to 16 concurrent downloads, default 12, coordinated index writes, and recovery timer. |
+| **v4** | **`baixar_momentos_v4.py`** | **Up to 32 concurrent downloads, default 12. Recommended for new downloads.** |
 
-V2, v3 e v4 usam `fotos_v2` por padrão e reconhecem seu índice. Não rode dois downloaders sobre a mesma pasta. A v3/v4 compartilha uma trava; as versões antigas não conhecem todas as travas. Encerre a anterior antes de trocar de versão.
+Existing Python filenames, Portuguese launchers/CLI aliases, output directory names, and index fields remain compatible with earlier installations. Code comments, help text, terminal messages, and generated gallery text are in English. V2–v4 still use `fotos_v2` by default so existing downloads can be resumed.
 
-## Começar no Mac
+## Quick start
 
-### 1. Instalar e obter os scripts
-
-Requisitos validados: macOS Apple Silicon, Python 3.9 ou compatível e ExifTool. Para instalar o ExifTool com Homebrew:
+Validated with macOS Apple Silicon and Python 3.9. Downloading requires Python and [ExifTool](https://exiftool.org/); OpenCV and the face models are only needed for face grouping.
 
 ```sh
 brew install exiftool
-```
-
-Clone este repositório ou baixe seu ZIP. No Terminal, dentro da pasta extraída:
-
-```sh
+git clone https://github.com/rafaelbferrari/utils-classapp.git
+cd utils-classapp
 python3 --version
 ```
 
-Para o download, apenas Python e ExifTool são necessários. OpenCV, Pillow e os modelos só são necessários para reconhecimento facial e seus testes.
+### Set up your own session
 
-### 2. Configurar sua própria sessão
+1. Sign into ClassApp in Chrome and open **Moments** for the intended profile.
+2. Open Developer Tools (`Option + Command + I`), select **Network**, reload the page, and filter by `graphql`.
+3. Find the **POST** request whose Payload contains `operationName: EntityMomentsQuery`.
+4. Right-click it and choose **Copy → Copy as cURL**.
 
-1. Abra o ClassApp no Chrome, faça login e entre em **Momentos** no perfil desejado.
-2. Abra as ferramentas de desenvolvedor (`Option + Command + I`), selecione **Network**, recarregue a página e filtre por `graphql`.
-3. Localize a requisição **POST** cujo Payload contém `operationName: EntityMomentsQuery`.
-4. Clique com o botão direito nela e escolha **Copy → Copy as cURL**.
-
-Para executar sem salvar as credenciais no disco, com essa requisição na área de transferência:
+To run without saving credentials to disk:
 
 ```sh
-pbpaste | python3 baixar_momentos_v4.py --curl - --de 2025-01-01 --ate 2025-12-31
+pbpaste | python3 baixar_momentos_v4.py --curl - --from 2025-01-01 --to 2025-12-31
 ```
 
-Os lançadores `.command` leem `.private/session.curl`. Se preferir usá-los, salve a requisição localmente:
+The `.command` launchers read `.private/session.curl`. To use them, save the request locally:
 
 ```sh
 mkdir -p .private
@@ -66,100 +61,60 @@ chmod 700 .private
 (umask 077; pbpaste > .private/session.curl)
 ```
 
-**Essa requisição contém autorização da sua conta. Não a envie por chat, issue ou commit.** O `.gitignore` a exclui. Sessões expiram: copie uma nova requisição quando necessário. O script interpreta o texto cURL sem executá-lo como comando de shell. Login e renovação de sessão não são automatizados.
+**This request authorizes access to your account. Never paste it into an issue, chat, or commit.** `.gitignore` excludes it. Sessions expire; copy a fresh request when needed. The scripts parse the cURL text without executing it as a shell command. Login and session refresh are not automated.
 
-### 3. Escolher um período e baixar
+### Download a date range
 
-Dê dois cliques em **Baixar fotos turbo.command**, informe as datas e a quantidade simultânea, ou use:
-
-```sh
-python3 baixar_momentos_v4.py --curl .private/session.curl \
-  --de 2025-01-01 --ate 2025-12-31 --simultaneos 12
-```
-
-Datas no formato `AAAA-MM-DD`, incluindo os dois dias. Você pode usar apenas um limite ou deixar ambos em aberto. A data é a **publicação do Momento**, convertida para São Paulo.
-
-As fotos ficam em `fotos_v2/AAAA-MM-DD/`. O índice local guarda os arquivos e hashes para retomada. Control+C interrompe; a saída pode aguardar as requisições em andamento. Ao executar novamente, arquivos íntegros já registrados são pulados. Não apague o índice para retomar.
-
-## Como cada recurso ajuda
-
-### Descobrir a data mais antiga
-
-```sh
-python3 consultar_primeira_data.py
-```
-
-Percorre as páginas e calcula a data mais antiga disponível e a primeira com fotos. Salva `datas_disponiveis.json` localmente. É útil para escolher o início de um backup completo. Não fornece acesso a registros fora do perfil autenticado. [Guia da consulta](LEIA-ME-primeira-data.md).
-
-### Datas coerentes na biblioteca de fotos
-
-A v2/v3/v4 preserva a captura EXIF quando presente. Se ela não existir, usa a publicação como aproximação e registra a origem da data no índice. Isso ajuda a organizar os arquivos no Finder e em aplicativos de fotos, mas não comprova o dia em que a escola tirou a foto.
-
-Para uma coleção já organizada em pastas de data, copie `ajustar_datas_pastas.py` e seu lançador para a pasta da coleção ou informe o caminho pelo Terminal:
-
-```sh
-python3 ajustar_datas_pastas.py /caminho/da/colecao --simular
-python3 ajustar_datas_pastas.py /caminho/da/colecao
-```
-
-Esse ajustador **sobrescreve** as datas com o dia da pasta às **12h de São Paulo**, pois a pasta não informa o horário. Cria backups `_original` por padrão e não recomprime as imagens. Rode após os downloads. [Guia do ajustador](LEIA-ME-ajustar-datas.md).
-
-### Encontrar fotos de cada pessoa
-
-Execute **Instalar reconhecimento.command** e, depois que a coleção estiver estável, **Separar fotos por pessoa.command**. Arraste a pasta de origem para a janela quando solicitado.
-
-O resultado é criado ao lado da origem:
-
-```text
-colecao_por_pessoa/
-  PESSOAS.html
-  Pessoa_0001/
-    PRINCIPAL.jpg
-    PRINCIPAL-origem.txt
-    fotos/...
-  Pessoa_0002/...
-  Sem_rosto_detectado/...
-```
-
-A imagem principal é um recorte do rosto escolhido para facilitar a revisão. Uma foto coletiva é copiada para os grupos correspondentes; isso ocupa espaço adicional. Os originais permanecem intactos.
-
-Os grupos são aproximações por semelhança, não identidades confirmadas. Rostos pequenos, desfocados, de lado e pessoas parecidas podem gerar erros ou vários grupos da mesma pessoa. Revise a galeria. O banco local contém descritores de rostos e deve permanecer privado. [Guia do reconhecimento](LEIA-ME-reconhecimento.md).
-
-### Recuperar falhas sem acompanhar o Terminal
-
-V3/v4 tentam recuperar timeouts e falhas temporárias. Depois de seis tentativas de rede, aguardam 60 segundos e tentam novamente a mesma operação. Por padrão, repetem até recuperar ou receber Control+C. Outros downloads podem continuar enquanto uma foto espera.
+Double-click **Download photos turbo.command**, enter the dates and concurrency, or run:
 
 ```sh
 python3 baixar_momentos_v4.py --curl .private/session.curl \
-  --simultaneos 12 --reiniciar-em 60 --max-reinicios 5
+  --from 2025-01-01 --to 2025-12-31 --concurrent 12
 ```
 
-Autenticação inválida, falta de espaço/permissão e erros permanentes encerram a execução. O diagnóstico local fica em `erros_download.log`, sem imprimir a sessão. [Detalhes da recuperação e concorrência](README_v3.md).
+Date limits are inclusive and refer to **publication dates** in the Sao Paulo time zone. Either limit can be omitted. Photos are saved under `fotos_v2/YYYY-MM-DD/`; the local index records paths and hashes for resume.
 
-## Limites conhecidos
+Press Control+C to stop. Active requests may need time to finish. Running again skips registered files whose hashes still match. Stop the previous downloader before changing versions; never run two downloaders against the same output directory.
 
-- Apenas fotos de **Momentos**; não inclui vídeos nem anexos de comunicados.
-- A consulta observada fornece `w1280`, sem garantia de resolução original.
-- As publicações são consultadas sequencialmente. Mais imagens simultâneas não acelera a busca por períodos antigos e não garante maior velocidade.
-- A API usada pelo site pode mudar; estes scripts não são uma integração oficial estável.
-- As consultas pedem para não marcar como lido nem apagar notificações; isso não elimina eventuais logs internos do serviço.
-- Não altere datas nem rode reconhecimento na mesma pasta enquanto o download ainda estiver gravando nela.
-- Os scripts e lançadores foram preparados para macOS; não há validação de Windows ou Linux.
+## Organize the results
 
-## Testes
+- **Find the oldest date:** run `python3 consultar_primeira_data.py`. It scans publication metadata and saves a local report, not images. [History guide](docs/history.md).
+- **Preserve useful photo dates:** v2–v4 retain an existing EXIF capture date or fall back to the publication date. The index records which source was used. [Download and metadata guide](docs/downloads.md).
+- **Fix dates from directory names:** run `python3 ajustar_datas_pastas.py /path/to/collection --dry-run`, then remove `--dry-run` to apply. This explicitly overwrites dates with the directory day at noon, creating `_original` backups by default. [Date correction guide](docs/dates.md).
+- **Group similar faces:** install dependencies, then launch **Group photos by person.command** after downloads finish. A separate output directory contains `Pessoa_0001`, a `PRINCIPAL.jpg` reference crop for each group, and a local `PESSOAS.html` gallery. Originals are preserved. [Face grouping guide](docs/faces.md).
 
-Usam imagens artificiais, respostas de rede simuladas e diretórios temporários. Não precisam de uma conta do ClassApp nem leem a coleção de fotos.
+Face groups are approximate, not confirmed identities. Similar-looking people, small or blurry faces, and side views may cause mixed or duplicate groups. Review the gallery before naming people. The private local database contains face descriptors; do not publish it. Group photos may be copied into multiple directories, requiring additional disk space.
+
+## Automatic recovery
+
+V3/v4 retry transient failures. After six initial network attempts, they wait 60 seconds and retry the same operation. By default, this continues until recovery or Control+C. Other workers can continue while one image waits.
 
 ```sh
-# Preparação de bibliotecas e modelos públicos para os testes
+python3 baixar_momentos_v4.py --curl .private/session.curl \
+  --concurrent 12 --retry-delay 60 --max-restarts 5
+```
+
+Authentication, disk, permission, configuration, and permanent HTTP errors stop execution. The local diagnostic log does not print account credentials. Higher concurrency does not guarantee higher throughput; history pagination remains sequential.
+
+## Known limitations
+
+- Downloads photos from **Moments** only, not videos or message attachments.
+- The observed query uses `w1280`; original resolution is not guaranteed.
+- Publication dates do not prove when a photo was taken.
+- The website API can change; this is not an official stable integration.
+- Queries request no read-status updates or notification deletion; this does not prevent server-side logs.
+- Do not correct dates or analyze faces in a directory that is still being downloaded.
+- The scripts and launchers target macOS; Windows and Linux are not validated.
+
+## Tests
+
+Tests use artificial images, simulated requests, and temporary directories. They do not need a ClassApp account or read your photo collection. ExifTool is required for metadata tests.
+
+```sh
 python3 -m venv .venv-pessoas
 .venv-pessoas/bin/python -m pip install -r requirements-pessoas.txt
-.venv-pessoas/bin/python separar_pessoas.py --preparar-modelos
-
-# ExifTool é necessário para testes dos metadados
+.venv-pessoas/bin/python separar_pessoas.py --prepare-models
 .venv-pessoas/bin/python -m unittest discover -s tests -v
 ```
 
-Um teste usa os modelos reais em uma imagem artificial sem rosto; os testes de agrupamento usam vetores simulados. Isso verifica o fluxo e a retomada, não a precisão em fotos reais de crianças.
-
-Documentação adicional: [v1](README_v1.md) · [v2](README_v2.md) · [v3](README_v3.md) · [v4](README_v4.md). Reconhecimento baseado nos modelos oficiais [YuNet/SFace do OpenCV](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html).
+One test runs the real models on an artificial blank image; grouping tests use simulated descriptors. These tests verify workflow and resume, not recognition accuracy on real children’s photos. Face models: official [OpenCV YuNet/SFace](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html).

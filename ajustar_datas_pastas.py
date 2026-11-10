@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ajusta datas das fotos pela pasta AAAA-MM-DD. Sem rede ou ClassApp."""
+"""Update photo dates from YYYY-MM-DD directory names, without network or ClassApp access."""
 import argparse
 from collections import defaultdict
 from datetime import date, datetime, time
@@ -28,16 +28,16 @@ def folder_date(path, root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('pasta', nargs='?', default='.', help='Pasta a percorrer; padrão: pasta atual.')
-    parser.add_argument('--simular', action='store_true', help='Lista os dias e quantidades, sem alterar arquivos.')
-    parser.add_argument('--sem-backup', action='store_true', help='Não cria a cópia foto.jpg_original do ExifTool.')
+    parser.add_argument('pasta', metavar='DIRECTORY', nargs='?', default='.', help='Directory to scan; default: current directory.')
+    parser.add_argument('--dry-run', '--simular', dest='simular', action='store_true', help='List dates and counts without changing files.')
+    parser.add_argument('--no-backup', '--sem-backup', dest='sem_backup', action='store_true', help='Do not create ExifTool _original backups.')
     args = parser.parse_args()
     root = Path(args.pasta).resolve()
     if not root.is_dir():
-        parser.error('A pasta informada não existe.')
+        parser.error('The specified directory does not exist.')
     tool = shutil.which('exiftool') or next((p for p in ['/opt/homebrew/bin/exiftool', '/usr/local/bin/exiftool'] if Path(p).is_file()), None)
     if not args.simular and not tool:
-        parser.error('Instale o ExifTool com: brew install exiftool')
+        parser.error('Install ExifTool with: brew install exiftool')
     groups = defaultdict(list)
     for current, dirs, files in os.walk(root, followlinks=False):
         dirs[:] = [d for d in sorted(dirs) if not d.startswith('.') and not (Path(current)/d).is_symlink()]
@@ -49,8 +49,8 @@ def main():
             if day:
                 groups[day].append(path)
     total = sum(map(len, groups.values()))
-    print(f'{total} fotos em {len(groups)} dias. Hora adotada: 12:00, fuso São Paulo.', flush=True)
-    # Índices opcionais do downloader: atualizar hashes evita baixar de novo arquivos editados.
+    print(f'{total} photos across {len(groups)} days. Assigned time: noon, Sao Paulo time zone.', flush=True)
+    # Update optional downloader indexes so edited photos are not downloaded again.
     snapshots = {}
     if not args.simular:
         for current, dirs, files in os.walk(root, followlinks=False):
@@ -69,7 +69,7 @@ def main():
     updated = set()
     failures = 0
     for day, paths in sorted(groups.items()):
-        print(f'{day}: {len(paths)} fotos', flush=True)
+        print(f'{day}: {len(paths)} photos', flush=True)
         if args.simular:
             continue
         local = datetime.combine(day, time(12), ZoneInfo('America/Sao_Paulo'))
@@ -92,11 +92,11 @@ def main():
                 print(result.stderr.strip(), file=sys.stderr)
             if result.returncode:
                 failures += 1
-            # Mesmo um lote parcial pode ter alterado arquivos: reconciliar hashes de todos.
+            # Even a partial batch may modify files; reconcile all hashes.
             updated.update(batch)
     for index, (raw, state) in snapshots.items():
         if index.read_bytes() != raw:
-            print(f'Índice em uso por outro processo: {index}. Pare o downloader e rode novamente para reconciliar os hashes.', file=sys.stderr)
+            print(f'Index in use by another process: {index}. Stop the downloader and run again to reconcile hashes.', file=sys.stderr)
             failures += 1
             continue
         changed = False
@@ -110,25 +110,25 @@ def main():
                 info['date_source'] = 'pasta_AAAA-MM-DD_hora_convencional_12h'
                 changed = True
         if changed:
-            # Não altera o campo created: continua representando a publicação original.
+            # Keep created unchanged; it still represents the original publication.
             tmp = index.with_name('indice.datas-pastas.tmp')
             tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2))
             tmp.replace(index)
     if args.simular:
-        print('Simulação concluída. Nenhum arquivo alterado.')
+        print('Dry run complete. No files changed.')
     elif failures:
-        print('Concluído com erros. Confira as mensagens acima.', file=sys.stderr)
+        print('Completed with errors. Check the messages above.', file=sys.stderr)
         return 1
     else:
-        print('Concluído. Datas ajustadas; imagens sem recompressão.')
+        print('Done. Dates updated without recompressing images.')
     return 0
 
 if __name__ == '__main__':
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print('\nInterrompido. Pode executar novamente.', file=sys.stderr)
+        print('\nInterrupted. You can run it again.', file=sys.stderr)
         sys.exit(130)
     except (OSError, ValueError) as exc:
-        print(f'Erro: {exc}', file=sys.stderr)
+        print(f'Error: {exc}', file=sys.stderr)
         sys.exit(1)

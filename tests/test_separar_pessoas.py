@@ -1,4 +1,4 @@
-"""Testes usam somente imagens artificiais criadas em diretórios temporários."""
+"""Tests use only artificial images created in temporary directories."""
 import contextlib
 import io
 import json
