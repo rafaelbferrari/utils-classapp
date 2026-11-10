@@ -16,6 +16,7 @@ Downloads use direct HTTP requests. Face grouping runs locally. No cloud AI serv
 | Find the start of your history | [Find oldest date.command](Find%20oldest%20date.command) | Finds the oldest accessible publication and oldest publication with photos without downloading images. |
 | Correct dates in an existing collection | [Fix photo dates.command](Fix%20photo%20dates.command) | Uses `YYYY-MM-DD` directories to update EXIF/XMP and Finder dates, without contacting ClassApp. |
 | Group photos by person | [Group photos by person.command](Group%20photos%20by%20person.command) | Copies photos into face-similarity groups and creates a representative face crop and a gallery for review. |
+| Name and merge groups | [Manage face groups.command](Manage%20face%20groups.command) | Save names, inspect full photos, merge duplicate groups, and undo changes in a local browser interface. |
 | Install face grouping dependencies | [Install face recognition.command](Install%20face%20recognition.command) | Installs an isolated environment and downloads official public models. Does not process photos. |
 
 ### Download versions

@@ -167,3 +167,7 @@ Um teste usa os modelos reais em uma imagem artificial sem rosto; os testes de a
 Documentação adicional: [v1](README_v1.md) · [v2](README_v2.md) · [v3](README_v3.md) · [v4](README_v4.md). Reconhecimento baseado nos modelos oficiais [YuNet/SFace do OpenCV](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html).
 
 Os comentários, mensagens do Terminal e a galeria gerada usam inglês. Os nomes antigos de arquivos e parâmetros continuam compatíveis; a documentação principal apresenta os novos nomes em inglês.
+
+## Nomear e unificar grupos de rostos
+
+Abra **Manage face groups.command** e selecione a pasta de resultado que contém `PESSOAS.html`. Use **Save name** para salvar o nome; selecione dois ou mais grupos e use **Merge selected groups** para unificar as fotos. **Undo last change** desfaz a última alteração. Tudo permanece local, com backup dos grupos e sem alterar as fotos de origem. A interface precisa permanecer em execução durante o uso.

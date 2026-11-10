@@ -32,3 +32,18 @@ Press Control+C and rerun with the same source and destination. Registered uncha
 Keep numbered directory names while processing or resuming. Rename them only after you no longer intend to resume; gallery links use the original names. The database and filenames retain legacy names for compatibility, while generated gallery text is English.
 
 Models come from a fixed revision of the official OpenCV repository with SHA-256 verification. Dependencies are isolated in `.venv-pessoas`. Validated with Python 3.9 on macOS Apple Silicon. [OpenCV model documentation](https://docs.opencv.org/4.x/d0/dd4/tutorial_dnn_face.html).
+
+## Name and merge groups
+
+Run **Manage face groups.command** and select the result directory containing `PESSOAS.html`. A local browser interface opens with these controls:
+
+- Enter a name and select **Save name**. The name persists in the local grouping database and appears in the static gallery as well.
+- Select two or more groups showing the same person, choose **Merge selected groups**, select which numbered group to retain, and enter the name to keep.
+- **View photos** opens the complete photos in that group for comparison.
+- **Undo last change** restores the most recent naming or merge operation.
+
+A merge collects unique photo paths into the retained group, combines its descriptors, and keeps the best reference crop. Shared photos are copied once. Names are labels: they do not verify an identity or retrain the recognition model. Original input photos are never changed.
+
+The manager serves only on `127.0.0.1` and keeps names, images, and backups on the Mac. Keep its process running while editing. It holds the same output lock as the grouping script, so they cannot modify a result simultaneously. A local `MANAGE.html` shortcut points to the active editing interface; if its address expires, restart the launcher.
+
+Before each change, a database snapshot is saved under `.management-history`. Merges archive the original group directories there. Undo is allowed only while the database still matches the latest managed action, preventing it from overwriting a newer analysis. Backups can require additional disk space. Do not delete them if you need undo. Keep these private along with the result database.
