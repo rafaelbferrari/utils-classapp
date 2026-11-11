@@ -25,6 +25,12 @@ class ManagerTests(unittest.TestCase):
         self.manager=Manager(self.root)
     def tearDown(self):
         self.manager.lock.close();self.temp.cleanup()
+    def test_missing_other_folder_does_not_break_name_save(self):
+        import shutil
+        shutil.rmtree(self.root/'Pessoa_0001')
+        self.manager.rename(2,'Example')
+        self.assertEqual(self.manager.groups()['groups'][1]['name'],'Example')
+        self.assertTrue((self.root/'PESSOAS.html').exists())
     def test_name_merge_deduplicate_and_undo(self):
         self.manager.rename(1,'Example Person')
         self.manager.merge([1,2],1,'Example Person')

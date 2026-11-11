@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local-only interface to name, merge, and undo face groups."""
+"""Loopback interface to name, merge, and undo face groups, with optional private HTTPS proxy."""
 import argparse
 from datetime import datetime
 import fcntl
@@ -234,13 +234,109 @@ class Manager:
 
 PAGE = r'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Manage face groups</title>
 <style>body{font:16px system-ui;background:#f3f5f8;color:#162237;margin:0}header{padding:24px 5vw;background:#fff;border-bottom:1px solid #dce1e8}h1{margin:0 0 8px}p{color:#526071}button,input,select{font:inherit;border:1px solid #c6ced9;border-radius:8px;padding:10px}button{cursor:pointer;background:#fff}button.primary{background:#244bc4;color:white;border-color:#244bc4}button:disabled{opacity:.5;cursor:wait}.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px}main{padding:24px 5vw;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px}.card{background:#fff;padding:14px;border:2px solid transparent;border-radius:14px}.card.selected{border-color:#244bc4}img.face{width:100%;aspect-ratio:1;object-fit:cover;border-radius:9px}.card label{display:block;margin:10px 0}.card input.name{box-sizing:border-box;width:100%;margin:8px 0}.buttons{display:flex;gap:8px}.small{font-size:13px;color:#526071}#status{min-height:24px;color:#244bc4}dialog{border:0;border-radius:16px;max-width:900px;width:85vw;padding:24px}dialog::backdrop{background:#0007}.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;max-height:65vh;overflow:auto}.photos img{width:100%;border-radius:8px}input[type=checkbox]{accent-color:#244bc4}#search{min-width:220px}</style>
-<header><h1>Manage face groups</h1><p>Name people and merge groups that show the same person. Original source photos remain unchanged.</p><div class="toolbar"><input id="search" placeholder="Search names or group IDs" aria-label="Search groups"><button id="merge" class="primary">Merge selected groups</button><button id="clear">Clear selection</button><button id="undo">Undo last change</button><span id="selection"></span></div><p id="status" role="status"></p></header><main id="groups"></main>
-<dialog id="mergeDialog"><h2>Merge selected groups</h2><p>All unique photos will be collected under the retained group. A backup is saved so this can be undone.</p><label>Keep group <select id="target"></select></label><p><label>Person’s name <input id="mergedName" maxlength="100"></label></p><p id="mergeSummary"></p><button id="confirmMerge" class="primary">Merge groups</button> <button onclick="document.querySelector('#mergeDialog').close()">Cancel</button></dialog>
+<header><h1>Manage face groups</h1><p>Name people and merge groups that show the same person. Original source photos remain unchanged.</p><div class="toolbar"><input id="search" placeholder="Search names or group IDs" aria-label="Search groups"><label>Sort by <select id="sort" aria-label="Sort groups"><option value="largest">Most photos first</option><option value="smallest">Fewest photos first</option><option value="id">Group ID</option></select></label><button id="merge" class="primary">Merge selected groups</button><button id="clear">Clear selection</button><button id="undo">Undo last change</button><span id="selection"></span></div><p id="status" role="status"></p></header><datalist id="knownNames"></datalist><p id="namesHint" class="small" style="padding:0 5vw"></p><main id="groups"></main>
+<dialog id="mergeDialog"><h2>Merge selected groups</h2><p>All unique photos will be collected under the retained group. A backup is saved so this can be undone.</p><label>Keep group <select id="target"></select></label><p><label>Person’s name <input id="mergedName" maxlength="100" list="knownNames"></label></p><p id="mergeSummary"></p><button id="confirmMerge" class="primary">Merge groups</button> <button onclick="document.querySelector('#mergeDialog').close()">Cancel</button></dialog>
 <dialog id="photoDialog"><h2 id="photoTitle"></h2><button onclick="document.querySelector('#photoDialog').close()">Close</button><p></p><div class="photos" id="photoGrid"></div></dialog>
-<script>const TOKEN='__TOKEN__';let groups=[],selected=new Set(),busy=false,canUndo=false;const $=s=>document.querySelector(s);function status(s){$('#status').textContent=s}async function api(path,data){const r=await fetch(path,data?{method:'POST',headers:{'Content-Type':'application/json','X-Local-Token':TOKEN},body:JSON.stringify(data)}:{});const result=await r.json();if(!r.ok)throw Error(result.error||'Request failed');return result}function label(g){return g.name||`Person ${String(g.id).padStart(4,'0')}`}function setBusy(b){busy=b;document.querySelectorAll('button').forEach(x=>x.disabled=b);if(!b)$('#undo').disabled=!canUndo}async function load(){const r=await api('/api/groups');groups=r.groups;canUndo=r.can_undo;selected=new Set([...selected].filter(id=>groups.some(g=>g.id===id)));render();$('#undo').disabled=!r.can_undo}function render(){const q=$('#search').value.toLowerCase();$('#groups').replaceChildren();for(const g of groups){if(!`${label(g)} ${g.id}`.toLowerCase().includes(q))continue;const c=document.createElement('section');c.className='card'+(selected.has(g.id)?' selected':'');const img=document.createElement('img');img.className='face';img.src=`/image/${g.id}?v=${Date.now()}`;img.alt=`Reference face for ${label(g)}`;c.append(img);const l=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(g.id);check.onchange=()=>{check.checked?selected.add(g.id):selected.delete(g.id);render()};l.append(check,document.createTextNode(` Group ${g.id} · ${g.count} photos`));c.append(l);const pathLabel=document.createElement('p');pathLabel.className='small';pathLabel.textContent=g.folder;c.append(pathLabel);const input=document.createElement('input');input.className='name';input.placeholder='Enter person’s name';input.value=g.name;input.maxLength=100;input.setAttribute('aria-label',`Name for group ${g.id}`);c.append(input);const buttons=document.createElement('div');buttons.className='buttons';const save=document.createElement('button');save.textContent='Save name';save.onclick=()=>mutate('/api/name',{id:g.id,name:input.value},'Name saved and directory renamed.');const view=document.createElement('button');view.textContent='View photos';view.onclick=()=>showPhotos(g);buttons.append(save,view);c.append(buttons);if(g.review){const p=document.createElement('p');p.className='small';p.textContent='Review similarity';c.append(p)}$('#groups').append(c)}$('#selection').textContent=`${selected.size} groups selected`}async function mutate(path,data,message){if(busy)return;setBusy(true);status('Saving…');try{await api(path,data);await load();status(message)}catch(e){status(e.message)}finally{setBusy(false)}}function showPhotos(g){$('#photoTitle').textContent=label(g);$('#photoGrid').replaceChildren();for(let i=0;i<g.count;i++){const a=document.createElement('a');a.href=`/image/${g.id}/${i}`;a.target='_blank';a.rel='noopener';const img=document.createElement('img');img.loading='lazy';img.src=a.href;img.alt=`Photo ${i+1}`;a.append(img);$('#photoGrid').append(a)}$('#photoDialog').showModal()}$('#search').oninput=render;$('#clear').onclick=()=>{selected.clear();render()};$('#merge').onclick=()=>{if(selected.size<2){status('Select at least two groups showing the same person.');return}const chosen=groups.filter(g=>selected.has(g.id));$('#target').replaceChildren();for(const g of chosen){const o=document.createElement('option');o.value=g.id;o.textContent=`${label(g)} (group ${g.id})`;$('#target').append(o)}$('#mergedName').value=chosen[0].name;$('#mergeSummary').textContent=`${chosen.length} groups selected. Duplicate photos will appear once in the merged group.`;$('#mergeDialog').showModal()};$('#target').onchange=()=>{$('#mergedName').value=groups.find(g=>g.id===Number($('#target').value)).name};$('#confirmMerge').onclick=async()=>{$('#mergeDialog').close();await mutate('/api/merge',{ids:[...selected],target:Number($('#target').value),name:$('#mergedName').value},'Groups merged. You can undo this change.');selected.clear();render()};$('#undo').onclick=()=>mutate('/api/undo',{},'Last change undone.');load().catch(e=>status(e.message));</script></html>'''
+<script>const TOKEN='__TOKEN__';
+let groups=[],selected=new Set(),busy=false,canUndo=false;
+const cards=new Map();
+const $=s=>document.querySelector(s);
+function status(message){$('#status').textContent=message}
+async function api(path,data){
+ const response=await fetch(path,data?{method:'POST',headers:{'Content-Type':'application/json','X-Local-Token':TOKEN},body:JSON.stringify(data)}:{});
+ const result=await response.json();
+ if(!response.ok)throw Error(result.error||'Request failed');
+ return result;
+}
+function label(group){return group.name||`Person ${String(group.id).padStart(4,'0')}`}
+function setBusy(value){busy=value;document.querySelectorAll('button').forEach(button=>button.disabled=value);if(!value)$('#undo').disabled=!canUndo}
+function updateNames(){
+ const names=[...new Set(groups.map(group=>group.name.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+ const list=$('#knownNames');list.replaceChildren();
+ for(const name of names){const option=document.createElement('option');option.value=name;list.append(option)}
+ $('#namesHint').textContent=`${names.length} saved names available. Type in a name field to choose an existing name.`;
+}
+async function load(savedId=null){
+ const result=await api('/api/groups');groups=result.groups;canUndo=result.can_undo;
+ selected=new Set([...selected].filter(id=>groups.some(group=>group.id===id)));
+ updateNames();render(savedId);$('#undo').disabled=busy||!canUndo;
+}
+function updateSelection(){
+ for(const [id,card] of cards){card.element.classList.toggle('selected',selected.has(id));card.check.checked=selected.has(id)}
+ $('#selection').textContent=`${selected.size} groups selected`;
+}
+function createCard(group){
+ const element=document.createElement('section');element.className='card';element.dataset.groupId=group.id;
+ const image=document.createElement('img');image.className='face';image.loading='lazy';image.src=`/image/${group.id}`;element.append(image);
+ const selection=document.createElement('label'),check=document.createElement('input');check.type='checkbox';
+ check.onchange=()=>{check.checked?selected.add(group.id):selected.delete(group.id);updateSelection()};
+ const count=document.createTextNode('');selection.append(check,count);element.append(selection);
+ const folder=document.createElement('p');folder.className='small';element.append(folder);
+ const input=document.createElement('input');input.className='name';input.placeholder='Type or choose a saved name';input.value=group.name;input.maxLength=100;input.setAttribute('list','knownNames');element.append(input);
+ const buttons=document.createElement('div');buttons.className='buttons';
+ const save=document.createElement('button');save.textContent='Save name';save.onclick=()=>mutate('/api/name',{id:group.id,name:input.value},'Name saved and directory renamed.',group.id);
+ const view=document.createElement('button');view.textContent='View photos';view.onclick=()=>showPhotos(groups.find(item=>item.id===group.id));
+ buttons.append(save,view);element.append(buttons);
+ const review=document.createElement('p');review.className='small';review.textContent='Review similarity';element.append(review);
+ return {element,image,check,count,folder,input,review,previous:group};
+}
+function render(savedId=null){
+ const query=$('#search').value.toLowerCase(),order=$('#sort').value;
+ const ordered=[...groups].sort((a,b)=>order==='largest'?(b.count-a.count||a.id-b.id):order==='smallest'?(a.count-b.count||a.id-b.id):a.id-b.id);
+ const valid=new Set(groups.map(group=>group.id));
+ for(const [id,card] of cards){if(!valid.has(id)){card.element.remove();cards.delete(id)}}
+ const container=$('#groups');
+ ordered.forEach((group,index)=>{
+  let card=cards.get(group.id);if(!card){card=createCard(group);cards.set(group.id,card)}
+  // Keep existing DOM nodes, image URLs, unsaved input and keyboard focus.
+  if(savedId===group.id||(card.previous.name!==group.name&&card.input.value===card.previous.name))card.input.value=group.name;
+  if(card.previous.count!==group.count)card.image.src=`/image/${group.id}?v=${Date.now()}`;
+  card.image.alt=`Reference face for ${label(group)}`;card.input.setAttribute('aria-label',`Name for group ${group.id}`);
+  card.count.textContent=` Group ${group.id} · ${group.count} photos`;card.folder.textContent=group.folder;card.review.hidden=!group.review;
+  card.element.hidden=!`${label(group)} ${group.id}`.toLowerCase().includes(query);
+  if(container.children[index]!==card.element)container.insertBefore(card.element,container.children[index]||null);
+  card.previous=group;
+ });
+ updateSelection();
+}
+async function mutate(path,data,message,savedId=null){
+ if(busy)return;setBusy(true);status('Saving…');
+ try{await api(path,data);await load(savedId);status(message)}catch(error){status(error.message)}finally{setBusy(false)}
+}
+function showPhotos(group){
+ if(!group)return;
+ $('#photoTitle').textContent=label(group);$('#photoGrid').replaceChildren();
+ for(let index=0;index<group.count;index++){
+  const link=document.createElement('a');link.href=`/image/${group.id}/${index}`;link.target='_blank';link.rel='noopener';
+  const image=document.createElement('img');image.loading='lazy';image.src=link.href;image.alt=`Photo ${index+1}`;link.append(image);$('#photoGrid').append(link);
+ }
+ $('#photoDialog').showModal();
+}
+$('#search').oninput=()=>render();$('#sort').onchange=()=>render();
+$('#clear').onclick=()=>{selected.clear();updateSelection()};
+$('#merge').onclick=()=>{
+ if(selected.size<2){status('Select at least two groups showing the same person.');return}
+ const chosen=groups.filter(group=>selected.has(group.id));$('#target').replaceChildren();
+ for(const group of chosen){const option=document.createElement('option');option.value=group.id;option.textContent=`${label(group)} (group ${group.id})`;$('#target').append(option)}
+ $('#mergedName').value=chosen[0].name;$('#mergeSummary').textContent=`${chosen.length} groups selected. Duplicate photos will appear once in the merged group.`;$('#mergeDialog').showModal();
+};
+$('#target').onchange=()=>{$('#mergedName').value=groups.find(group=>group.id===Number($('#target').value)).name};
+$('#confirmMerge').onclick=async()=>{
+ $('#mergeDialog').close();await mutate('/api/merge',{ids:[...selected],target:Number($('#target').value),name:$('#mergedName').value},'Groups merged. You can undo this change.');selected.clear();updateSelection();
+};
+$('#undo').onclick=()=>mutate('/api/undo',{},'Last change undone.');
+load().catch(error=>status(error.message));
+</script></html>'''
 
 
-def serve(manager,port=0):
+def serve(manager,port=0,external_origin=None):
+    if external_origin:
+        parsed=urllib.parse.urlsplit(external_origin)
+        if (parsed.scheme!='https' or not parsed.hostname or not parsed.hostname.endswith('.ts.net')
+                or parsed.username or parsed.password or parsed.port not in (None,443)
+                or parsed.path not in ('','/') or parsed.query or parsed.fragment):
+            raise ValueError('External origin must be an HTTPS Tailscale .ts.net address without a path.')
+        external_origin='https://'+parsed.netloc
     token=secrets.token_urlsafe(32)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args):pass
@@ -250,7 +346,9 @@ def serve(manager,port=0):
             self.send_response(status);self.send_header('Content-Type',content_type);self.send_header('Content-Length',str(len(body)))
             self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('X-Frame-Options','DENY');self.end_headers();self.wfile.write(body)
         def allowed(self):
-            return self.headers.get('Host')==f'127.0.0.1:{self.server.server_port}'
+            hosts={f'127.0.0.1:{self.server.server_port}'}
+            if external_origin:hosts.add(urllib.parse.urlsplit(external_origin).netloc)
+            return self.headers.get('Host') in hosts
         def do_GET(self):
             if not self.allowed():return self.send(403,{'error':'Invalid host.'})
             path=urllib.parse.urlsplit(self.path).path
@@ -268,7 +366,7 @@ def serve(manager,port=0):
         def do_POST(self):
             if not self.allowed() or self.headers.get('X-Local-Token')!=token:return self.send(403,{'error':'Invalid local request token.'})
             origin=self.headers.get('Origin')
-            if origin and origin!=f'http://127.0.0.1:{self.server.server_port}':return self.send(403,{'error':'Invalid origin.'})
+            if origin and origin not in {f'http://127.0.0.1:{self.server.server_port}',external_origin}:return self.send(403,{'error':'Invalid origin.'})
             try:
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<16384:raise ValueError('Invalid request size.')
@@ -291,8 +389,9 @@ def main():
     parser.add_argument('directory',help='Grouping result directory containing .pessoas.sqlite3.')
     parser.add_argument('--port',type=int,default=0)
     parser.add_argument('--no-open',action='store_true')
+    parser.add_argument('--external-origin',help='Private Tailscale Serve HTTPS origin; never enables a public listener.')
     args=parser.parse_args();os.umask(0o077)
-    manager=Manager(args.directory);server=serve(manager,args.port)
+    manager=Manager(args.directory);server=serve(manager,args.port,args.external_origin)
     address=f'http://127.0.0.1:{server.server_port}'
     (manager.root/'MANAGE.html').write_text(f'<!doctype html><html lang="en"><meta charset="utf-8"><title>Manage face groups</title><h1>Manage face groups</h1><p>Keep the local manager running, then <a href="{address}">open the editing interface</a>.</p><p>If this link has expired, restart Manage face groups.command.</p>')
     print('Local face group manager:',address,flush=True)

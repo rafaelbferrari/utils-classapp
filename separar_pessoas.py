@@ -128,11 +128,12 @@ def gallery(db, destination):
     cards = []
     has_names = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='person_names'").fetchone()
     names = dict(db.execute('SELECT person,name FROM person_names')) if has_names else {}
-    for pid, count, review in db.execute('SELECT p.id, COUNT(a.path), p.review FROM people p LEFT JOIN appearances a ON a.person=p.id GROUP BY p.id ORDER BY p.id'):
+    for pid, count, review in db.execute('SELECT p.id, COUNT(a.path), p.review FROM people p LEFT JOIN appearances a ON a.person=p.id GROUP BY p.id ORDER BY COUNT(a.path) DESC, p.id'):
         folder = group_folder(db,pid)
         folder_url=urllib.parse.quote(folder,safe='')
         preview_source = db.execute('SELECT preview FROM people WHERE id=?',(pid,)).fetchone()[0]
-        (destination/folder/'PRINCIPAL-origem.txt').write_text('Source photo for the representative crop: '+preview_source+'\n', encoding='utf-8')
+        if (destination/folder).is_dir():
+            (destination/folder/'PRINCIPAL-origem.txt').write_text('Source photo for the representative crop: '+preview_source+'\n', encoding='utf-8')
         cards.append(f'<a class="card" href="{folder_url}/"><img loading="lazy" src="{folder_url}/PRINCIPAL.jpg" alt="Reference face for group {pid}"><strong>{html.escape(names.get(pid) or folder)}</strong><span>{count} photos'+(' · review similarity' if review else '')+'</span></a>')
     document = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>People in photos</title><style>body{font:16px system-ui;background:#f2f4f7;color:#172033;padding:28px}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:20px}.card{display:flex;flex-direction:column;gap:8px;background:white;padding:12px;border-radius:12px;text-decoration:none;color:inherit}img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px}span{font-size:14px;color:#526077}</style><h1>People in photos</h1><p>Groups based on facial similarity. Review faces before assigning names. Open a person directory to see the copies. To name or merge groups, run Manage face groups.command and select this result directory.</p><main>'+''.join(cards)+'</main></html>'
     tmp = destination/'PESSOAS.tmp.html'; tmp.write_text(document, encoding='utf-8'); tmp.replace(destination/'PESSOAS.html')
